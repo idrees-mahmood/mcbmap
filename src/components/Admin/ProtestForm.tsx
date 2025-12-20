@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import type { MapPoint, ProtestFormData } from '../../lib/database.types'
 import { calculateWalkingRoute, createRouteBuffer, formatDistance, formatDuration } from '../../lib/osrm'
+import { LocationInput } from './LocationInput'
 
 interface ProtestFormProps {
     onSubmit: (data: ProtestFormData, route: { geometry: GeoJSON.LineString; buffer: GeoJSON.Polygon; distance: number; duration: number }) => void
     onCancel: () => void
     onSetClickMode: (mode: 'start' | 'end' | null) => void
+    onStartPointChange: (point: MapPoint | null) => void
+    onEndPointChange: (point: MapPoint | null) => void
     clickMode: 'start' | 'end' | null
     startPoint: MapPoint | null
     endPoint: MapPoint | null
@@ -15,6 +18,8 @@ export function ProtestForm({
     onSubmit,
     onCancel,
     onSetClickMode,
+    onStartPointChange,
+    onEndPointChange,
     clickMode,
     startPoint,
     endPoint
@@ -155,43 +160,33 @@ export function ProtestForm({
             </div>
 
             {/* Route Points */}
-            <div className="space-y-3">
+            <div className="space-y-4">
                 <label className="input-label">Route Points *</label>
 
-                <div className="flex items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={() => onSetClickMode(clickMode === 'start' ? null : 'start')}
-                        className={`flex-1 py-3 rounded-lg border font-medium transition-all ${clickMode === 'start'
-                                ? 'bg-green-500/20 border-green-500 text-green-400'
-                                : startPoint
-                                    ? 'bg-green-500/10 border-green-500/50 text-green-400'
-                                    : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-green-500'
-                            }`}
-                    >
-                        {startPoint ? '✓ Start Set' : '📍 Set Start'}
-                    </button>
+                <LocationInput
+                    label="🚩 Start Location"
+                    point={startPoint}
+                    onPointChange={onStartPointChange}
+                    onSetClickMode={() => onSetClickMode(clickMode === 'start' ? null : 'start')}
+                    isClickModeActive={clickMode === 'start'}
+                    colorClass="green"
+                />
 
-                    <button
-                        type="button"
-                        onClick={() => onSetClickMode(clickMode === 'end' ? null : 'end')}
-                        className={`flex-1 py-3 rounded-lg border font-medium transition-all ${clickMode === 'end'
-                                ? 'bg-red-500/20 border-red-500 text-red-400'
-                                : endPoint
-                                    ? 'bg-red-500/10 border-red-500/50 text-red-400'
-                                    : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-red-500'
-                            }`}
-                    >
-                        {endPoint ? '✓ End Set' : '🏁 Set End'}
-                    </button>
-                </div>
+                <LocationInput
+                    label="🏁 End Location"
+                    point={endPoint}
+                    onPointChange={onEndPointChange}
+                    onSetClickMode={() => onSetClickMode(clickMode === 'end' ? null : 'end')}
+                    isClickModeActive={clickMode === 'end'}
+                    colorClass="red"
+                />
 
                 {startPoint && endPoint && (
                     <button
                         type="button"
                         onClick={handleCalculateRoute}
                         disabled={isCalculating}
-                        className="w-full btn-secondary mt-2"
+                        className="w-full btn-secondary"
                     >
                         {isCalculating ? 'Calculating...' : '🔄 Preview Route'}
                     </button>

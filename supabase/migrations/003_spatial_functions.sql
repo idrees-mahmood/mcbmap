@@ -2,6 +2,30 @@
 -- Protest Impact Tracker - Spatial Analysis Functions
 -- =============================================================
 
+-- Function: Get all business nodes with extracted coordinates
+-- This is used by the client for point-in-polygon counting
+CREATE OR REPLACE FUNCTION get_all_business_nodes()
+RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    type TEXT,
+    subtype TEXT,
+    lng FLOAT,
+    lat FLOAT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        bn.id,
+        bn.name,
+        bn.type,
+        bn.subtype,
+        ST_X(bn.location::GEOMETRY) as lng,
+        ST_Y(bn.location::GEOMETRY) as lat
+    FROM business_nodes bn;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
 -- Function: Count all businesses within a route's buffer zone
 CREATE OR REPLACE FUNCTION count_businesses_in_buffer(route_uuid UUID)
 RETURNS TABLE (
@@ -22,6 +46,25 @@ BEGIN
     WHERE ST_DWithin(bn.location, r.buffer_geometry, 0);
 END;
 $$ LANGUAGE plpgsql STABLE;
+
+-- Function: Count businesses within a bounding box (for coverage checking)
+CREATE OR REPLACE FUNCTION count_businesses_in_bbox(
+    min_lng FLOAT,
+    min_lat FLOAT,
+    max_lng FLOAT,
+    max_lat FLOAT
+)
+RETURNS BIGINT AS $$
+BEGIN
+    RETURN (
+        SELECT COUNT(*)
+        FROM business_nodes bn
+        WHERE ST_X(bn.location::GEOMETRY) BETWEEN min_lng AND max_lng
+          AND ST_Y(bn.location::GEOMETRY) BETWEEN min_lat AND max_lat
+    );
+END;
+$$ LANGUAGE plpgsql STABLE;
+
 
 -- Function: Get baseline footfall for a protest (matching day of week and time range)
 CREATE OR REPLACE FUNCTION get_baseline_for_protest(protest_uuid UUID)

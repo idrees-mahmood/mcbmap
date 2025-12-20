@@ -23,15 +23,15 @@ from supabase import create_client, Client
 
 # Configuration
 SUPABASE_URL = os.getenv('SUPABASE_URL') or os.getenv('VITE_SUPABASE_URL')
-SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('VITE_SUPABASE_ANON_KEY')
+SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('VITE_SUPABASE_ANON_KEY')
 
-# Central London bounding box (roughly Westminster, City, Southwark)
+# Central/West London bounding box (Earl's Court to Shoreditch, Regent's Park to Pimlico)
 # [North, South, East, West]
 BBOX = {
-    'north': 51.53,
-    'south': 51.48,
-    'east': -0.07,
-    'west': -0.17
+    'north': 51.55,   # Regent's Park / Camden
+    'south': 51.47,   # Pimlico / Vauxhall
+    'east': -0.05,    # Shoreditch / City
+    'west': -0.22     # Earl's Court / South Kensington
 }
 
 # OSM tags for retail and hospitality

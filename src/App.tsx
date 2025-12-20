@@ -5,6 +5,7 @@ import { ProtestList } from './components/Admin/ProtestList'
 import { StatsSidebar } from './components/Analysis/StatsSidebar'
 import type { MapPoint, ProtestWithRoute, ProtestFormData } from './lib/database.types'
 import { isDemoMode } from './lib/supabase'
+import { countBusinessesInBuffer } from './lib/businessCounter'
 
 type SidebarView = 'list' | 'form' | 'stats'
 
@@ -36,10 +37,14 @@ function App() {
   }, [])
 
   // Handle form submission
-  const handleFormSubmit = useCallback((
+  const handleFormSubmit = useCallback(async (
     data: ProtestFormData,
     route: { geometry: GeoJSON.LineString; buffer: GeoJSON.Polygon; distance: number; duration: number }
   ) => {
+    // Count businesses within the buffer zone
+    const businessCounts = await countBusinessesInBuffer(route.buffer)
+    console.log('Business counts:', businessCounts)
+
     const newProtest: ProtestWithRoute = {
       id: crypto.randomUUID(),
       name: data.name,
@@ -60,8 +65,8 @@ function App() {
         buffer: route.buffer,
         distance_meters: route.distance,
         duration_seconds: route.duration,
-        affected_retail: 0, // Would be calculated by PostGIS in production
-        affected_hospitality: 0
+        affected_retail: businessCounts.retail,
+        affected_hospitality: businessCounts.hospitality
       }
     }
 
@@ -125,8 +130,8 @@ function App() {
                 <button
                   onClick={() => setSidebarView('list')}
                   className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${sidebarView === 'list'
-                      ? 'bg-purple-500/20 text-purple-400 border border-purple-500'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
+                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
                     }`}
                 >
                   Protests
@@ -134,8 +139,8 @@ function App() {
                 <button
                   onClick={() => setSidebarView('stats')}
                   className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${sidebarView === 'stats'
-                      ? 'bg-purple-500/20 text-purple-400 border border-purple-500'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
+                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
                     }`}
                 >
                   Analysis
@@ -167,6 +172,8 @@ function App() {
               onSubmit={handleFormSubmit}
               onCancel={handleCancelForm}
               onSetClickMode={setClickMode}
+              onStartPointChange={setStartPoint}
+              onEndPointChange={setEndPoint}
               clickMode={clickMode}
               startPoint={startPoint}
               endPoint={endPoint}

@@ -30,6 +30,16 @@ export function ProtestMap({
     const endMarkerRef = useRef<mapboxgl.Marker | null>(null)
     const [mapLoaded, setMapLoaded] = useState(false)
 
+    // Refs to hold latest values for use in event handlers (fixes closure bug)
+    const clickModeRef = useRef(clickMode)
+    const onMapClickRef = useRef(onMapClick)
+
+    // Keep refs in sync with props
+    useEffect(() => {
+        clickModeRef.current = clickMode
+        onMapClickRef.current = onMapClick
+    }, [clickMode, onMapClick])
+
     // Initialize map
     useEffect(() => {
         if (!mapContainer.current || map.current) return
@@ -170,8 +180,9 @@ export function ProtestMap({
 
         // Map click for placing markers
         map.current.on('click', (e) => {
-            if (clickMode && onMapClick) {
-                onMapClick({ lng: e.lngLat.lng, lat: e.lngLat.lat })
+            // Use refs to get current values (avoids stale closure)
+            if (clickModeRef.current && onMapClickRef.current) {
+                onMapClickRef.current({ lng: e.lngLat.lng, lat: e.lngLat.lat })
             }
         })
 
