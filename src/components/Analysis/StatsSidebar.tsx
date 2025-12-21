@@ -110,6 +110,34 @@ export function StatsSidebar({ selectedProtest, totalProtests }: StatsSidebarPro
                         </p>
                     </div>
 
+                    {/* Footfall Impact Section */}
+                    <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                            🔥 Footfall Impact
+                            <span className="text-xs text-slate-500">(estimated)</span>
+                        </h4>
+
+                        <div className="bg-slate-800/50 rounded-lg p-4 space-y-3">
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-400 text-sm">Baseline (typical)</span>
+                                <span className="text-green-400 font-semibold">~65%</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-400 text-sm">Est. Reduction</span>
+                                <span className="text-amber-400 font-semibold">-30%</span>
+                            </div>
+                            <div className="border-t border-slate-700 pt-2 flex justify-between items-center">
+                                <span className="text-slate-300 text-sm font-medium">During Protest</span>
+                                <span className="text-red-400 font-bold">~46%</span>
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-slate-500">
+                            Footfall estimates based on typical patterns for this day/time.
+                            A 30% reduction is applied within the 50m impact zone.
+                        </p>
+                    </div>
+
                     {/* Buffer Zone Info */}
                     <div className="text-xs text-slate-500 flex items-center gap-2">
                         <div className="w-3 h-3 bg-red-500/50 rounded"></div>

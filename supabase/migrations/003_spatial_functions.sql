@@ -66,7 +66,35 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 
--- Function: Get baseline footfall for a protest (matching day of week and time range)
+-- Function: Get all footfall points with extracted coordinates
+-- Used by the frontend for heatmap visualization
+CREATE OR REPLACE FUNCTION get_footfall_points()
+RETURNS TABLE (
+    id UUID,
+    location_name TEXT,
+    lng FLOAT,
+    lat FLOAT,
+    day_of_week TEXT,
+    hour_of_day INTEGER,
+    avg_footfall_score INTEGER,
+    source TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        fb.id,
+        fb.location_name,
+        ST_X(fb.location_point::GEOMETRY) as lng,
+        ST_Y(fb.location_point::GEOMETRY) as lat,
+        fb.day_of_week,
+        fb.hour_of_day,
+        fb.avg_footfall_score,
+        fb.source
+    FROM footfall_baseline fb;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+
 CREATE OR REPLACE FUNCTION get_baseline_for_protest(protest_uuid UUID)
 RETURNS TABLE (
     location_name TEXT,
