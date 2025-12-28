@@ -26,13 +26,20 @@ export function ProtestList({ protests, selectedId, onSelect, onDelete }: Protes
                     key={protest.id}
                     onClick={() => onSelect(selectedId === protest.id ? null : protest.id)}
                     className={`p-4 rounded-xl cursor-pointer transition-all border ${selectedId === protest.id
-                            ? 'bg-purple-500/20 border-purple-500'
-                            : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'
+                        ? 'bg-purple-500/20 border-purple-500'
+                        : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'
                         }`}
                 >
                     <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-white truncate">{protest.name}</h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-white truncate">{protest.name}</h3>
+                                {protest.isStored && (
+                                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-medium">
+                                        STORED
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-sm text-slate-400 mt-1">
                                 {new Date(protest.event_date).toLocaleDateString('en-GB', {
                                     weekday: 'short',

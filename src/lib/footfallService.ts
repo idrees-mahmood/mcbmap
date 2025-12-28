@@ -49,8 +49,9 @@ export async function fetchFootfallBaseline(): Promise<FootfallPoint[]> {
 
     try {
         // Try RPC first for proper coordinate extraction
-        const { data, error } = await supabase
-            .rpc('get_footfall_points')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any)
+            .rpc('get_footfall_points') as { data: FootfallPoint[] | null; error: Error | null }
 
         if (error) {
             console.warn('[FootfallService] RPC not available, using direct query')

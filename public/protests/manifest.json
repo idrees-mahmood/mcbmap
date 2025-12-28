@@ -1,0 +1,15 @@
+{
+    "protests": [
+        {
+            "file": "test.json",
+            "name": "National March for Palestine - End The Genocide - Stop Arming Israel - Stop Starving Gaza",
+            "date": "2025-10-11",
+            "startTime": "12:00",
+            "endTime": "16:00",
+            "attendees": 600000,
+            "notes": "Victoria Embankment to Downing Street",
+            "speakers" : ["Ahmed Alnaouq - Palestinian Journalist", "Kieran Andrieu", "Jeremy Corbyn - Independent MP", "Robert Del Naja - Massive Attack", "Brian Eno - Artist", "Denise Gough - Actor", "Fran Heathcote - PSC Union General Secretary", "Dr Nick Maynard - Surgeon working in Gaza", "Zarah Sultana - Independent MP"],
+            "links" : ["https://www.middleeasteye.net/live-blog/live-blog-update/hundreds-thousands-march-london-call-lasting-peace", "https://morningstaronline.co.uk/article/huge-palestine-march-strikes-blow-humanity-and-against-authoritarianism-and-far-right", "https://www.independent.co.uk/news/uk/home-news/palestine-protest-london-gaza-israel-b2843665.html", "https://www.bbc.co.uk/news/articles/cewnwgnqj2qo", "https://www.theguardian.com/world/2025/oct/11/thousands-gather-london-march-lasting-peace-gaza"]
+        }
+    ]
+}

@@ -156,7 +156,8 @@ export async function insertBusinessesToSupabase(
         for (let i = 0; i < records.length; i += batchSize) {
             const batch = records.slice(i, i + batchSize)
 
-            const { error } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase as any)
                 .from('business_nodes')
                 .upsert(batch, { onConflict: 'osm_id', ignoreDuplicates: true })
 
@@ -185,13 +186,14 @@ export async function checkCoverage(
 ): Promise<{ hasCoverage: boolean; existingCount: number }> {
     try {
         // Check how many businesses exist in this bbox
-        const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any)
             .rpc('count_businesses_in_bbox', {
                 min_lng: bbox.west,
                 min_lat: bbox.south,
                 max_lng: bbox.east,
                 max_lat: bbox.north
-            })
+            }) as { data: number | null; error: Error | null }
 
         if (error) {
             // RPC might not exist, fall back to assuming no coverage

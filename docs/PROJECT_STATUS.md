@@ -173,7 +173,7 @@ python3 popular_times_scraper.py
 ### Priority 4: Enhanced Analysis
 - Time-series impact visualization
 - Business revenue impact estimation
-- Comparison across multiple protests
+- Comparison across multiple protests   
 
 ---
 

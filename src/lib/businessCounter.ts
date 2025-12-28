@@ -54,11 +54,21 @@ export async function fetchBusinessNodes(): Promise<BusinessNode[]> {
         return businessNodesCache
     }
 
+    // Define the expected RPC result type
+    type RPCBusinessNode = {
+        id: string
+        name: string | null
+        type: 'retail' | 'hospitality' | 'other'
+        subtype: string | null
+        lng: number
+        lat: number
+    }
+
     try {
         // Fetch business nodes with coordinates extracted via RPC
         console.log('[BusinessCounter] Fetching business nodes via RPC...')
         const { data, error } = await supabase
-            .rpc('get_all_business_nodes')
+            .rpc('get_all_business_nodes') as { data: RPCBusinessNode[] | null; error: Error | null }
 
         if (error) {
             // RPC not available - this is expected if the SQL function hasn't been deployed

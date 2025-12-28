@@ -230,6 +230,9 @@ export interface ProtestWithRoute extends Protest {
         affected_retail: number
         affected_hospitality: number
     }
+    isStored?: boolean  // True if loaded from stored GeoJSON files
+    speakers?: string[]  // List of speakers at the protest
+    links?: string[]  // Related news/media links
 }
 
 export interface MapPoint {

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { ProtestMap } from './components/Map/ProtestMap'
 import { ProtestForm } from './components/Admin/ProtestForm'
 import { ProtestList } from './components/Admin/ProtestList'
@@ -6,6 +6,7 @@ import { StatsSidebar } from './components/Analysis/StatsSidebar'
 import type { MapPoint, ProtestWithRoute, ProtestFormData } from './lib/database.types'
 import { isDemoMode } from './lib/supabase'
 import { countBusinessesInBuffer } from './lib/businessCounter'
+import { loadStoredProtests, clearRouteCache, getRouteMode, setRouteMode, type RouteMode } from './lib/protestLoader'
 
 type SidebarView = 'list' | 'form' | 'stats'
 
@@ -16,6 +17,59 @@ function App() {
   const [clickMode, setClickMode] = useState<'start' | 'end' | null>(null)
   const [startPoint, setStartPoint] = useState<MapPoint | null>(null)
   const [endPoint, setEndPoint] = useState<MapPoint | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [routeMode, setRouteModeState] = useState<RouteMode>(getRouteMode())
+
+  // Load stored protests on mount
+  useEffect(() => {
+    async function loadProtests() {
+      try {
+        console.log('[App] Loading stored protests...')
+        const storedProtests = await loadStoredProtests()
+        setProtests(storedProtests)
+        console.log(`[App] Loaded ${storedProtests.length} stored protests`)
+      } catch (err) {
+        console.error('[App] Failed to load stored protests:', err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadProtests()
+  }, [])
+
+  // Handle recalculate (clear cache and reload)
+  const handleRecalculateRoutes = useCallback(async () => {
+    setIsLoading(true)
+    clearRouteCache()
+    try {
+      const storedProtests = await loadStoredProtests()
+      setProtests(storedProtests)
+      console.log(`[App] Recalculated ${storedProtests.length} stored protests`)
+    } catch (err) {
+      console.error('[App] Failed to recalculate protests:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // Handle route mode toggle
+  const handleToggleRouteMode = useCallback(async () => {
+    const newMode: RouteMode = routeMode === 'raw' ? 'osrm' : 'raw'
+    setRouteMode(newMode)
+    setRouteModeState(newMode)
+
+    // Reload protests with new mode
+    setIsLoading(true)
+    try {
+      const storedProtests = await loadStoredProtests()
+      setProtests(storedProtests)
+      console.log(`[App] Switched to ${newMode} mode, loaded ${storedProtests.length} protests`)
+    } catch (err) {
+      console.error('[App] Failed to load protests in new mode:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [routeMode])
 
   // Handle map click for placing markers
   const handleMapClick = useCallback((point: MapPoint) => {
@@ -123,6 +177,14 @@ function App() {
             </div>
           )}
 
+          {/* Loading Indicator */}
+          {isLoading && (
+            <div className="mb-4 bg-purple-500/20 border border-purple-500/50 rounded-lg p-3 text-purple-300 text-sm flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+              Loading stored protests...
+            </div>
+          )}
+
           {/* Sidebar Navigation */}
           <div className="flex gap-2 mb-6">
             {sidebarView !== 'form' && (
@@ -152,12 +214,33 @@ function App() {
           {/* Sidebar Content */}
           {sidebarView === 'list' && (
             <div>
-              <button
-                onClick={() => setSidebarView('form')}
-                className="w-full btn-primary mb-6"
-              >
-                + Add Protest
-              </button>
+              <div className="flex gap-2 mb-6">
+                <button
+                  onClick={() => setSidebarView('form')}
+                  className="flex-1 btn-primary"
+                >
+                  + Add Protest
+                </button>
+                <button
+                  onClick={handleToggleRouteMode}
+                  disabled={isLoading}
+                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all disabled:opacity-50 ${routeMode === 'osrm'
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500'
+                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500'
+                    }`}
+                  title={`Currently using ${routeMode === 'osrm' ? 'OSRM routing' : 'raw LineString'}. Click to switch.`}
+                >
+                  {routeMode === 'osrm' ? 'OSRM' : 'RAW'}
+                </button>
+                <button
+                  onClick={handleRecalculateRoutes}
+                  disabled={isLoading}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600 hover:text-slate-300 transition-all disabled:opacity-50"
+                  title="Clear cache and recalculate all routes"
+                >
+                  🔄
+                </button>
+              </div>
               <ProtestList
                 protests={protests}
                 selectedId={selectedProtestId}

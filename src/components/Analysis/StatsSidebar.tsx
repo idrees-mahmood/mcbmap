@@ -110,6 +110,61 @@ export function StatsSidebar({ selectedProtest, totalProtests }: StatsSidebarPro
                         </p>
                     </div>
 
+                    {/* Speakers Section */}
+                    {selectedProtest.speakers && selectedProtest.speakers.length > 0 && (
+                        <details className="group">
+                            <summary className="flex items-center justify-between cursor-pointer py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors">
+                                <span className="flex items-center gap-2">
+                                    🎙️ Speakers ({selectedProtest.speakers.length})
+                                </span>
+                                <span className="text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+                            </summary>
+                            <div className="mt-2 space-y-2 pl-6">
+                                {selectedProtest.speakers.map((speaker, i) => (
+                                    <div key={i} className="text-sm text-slate-400 flex items-start gap-2">
+                                        <span className="text-slate-600">•</span>
+                                        <span>{speaker}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </details>
+                    )}
+
+                    {/* Links Section */}
+                    {selectedProtest.links && selectedProtest.links.length > 0 && (
+                        <details className="group">
+                            <summary className="flex items-center justify-between cursor-pointer py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors">
+                                <span className="flex items-center gap-2">
+                                    🔗 Related Links ({selectedProtest.links.length})
+                                </span>
+                                <span className="text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+                            </summary>
+                            <div className="mt-2 space-y-2 pl-6">
+                                {selectedProtest.links.map((link, i) => {
+                                    // Extract domain for display
+                                    let displayName = link
+                                    try {
+                                        const url = new URL(link)
+                                        displayName = url.hostname.replace('www.', '')
+                                    } catch { /* use full link */ }
+
+                                    return (
+                                        <a
+                                            key={i}
+                                            href={link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-sm text-blue-400 hover:text-blue-300 flex items-start gap-2 transition-colors"
+                                        >
+                                            <span className="text-slate-600">•</span>
+                                            <span className="underline underline-offset-2">{displayName}</span>
+                                        </a>
+                                    )
+                                })}
+                            </div>
+                        </details>
+                    )}
+
                     {/* Footfall Impact Section */}
                     <div className="space-y-3">
                         <h4 className="text-sm font-medium text-slate-300 flex items-center gap-2">
