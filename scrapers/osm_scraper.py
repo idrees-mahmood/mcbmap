@@ -34,13 +34,18 @@ BBOX = {
     'west': -0.22     # Earl's Court / South Kensington
 }
 
-# OSM tags for retail and hospitality
+# OSM tags for retail, hospitality, and commercial establishments
 TAGS = {
     'retail': {
         'shop': True,  # All shop types
     },
     'hospitality': {
         'amenity': ['restaurant', 'cafe', 'bar', 'pub', 'fast_food', 'food_court', 'biergarten'],
+    },
+    'commercial': {
+        'amenity': ['bank', 'bureau_de_change', 'post_office', 'clinic', 'dentist'],
+        'office': True,  # All office types (crucial for weekend analysis)
+        'leisure': ['fitness_centre', 'gym', 'sports_centre'],
     }
 }
 
@@ -101,13 +106,25 @@ def fetch_osm_pois(tags: dict, poi_type: str) -> list:
                 subtype = row.get('shop', None)
             elif poi_type == 'hospitality' and 'amenity' in row.index:
                 subtype = row.get('amenity', None)
+            elif poi_type == 'commercial':
+                # Commercial can come from multiple tags
+                if 'office' in row.index and row.get('office'):
+                    subtype = row.get('office', None)
+                elif 'leisure' in row.index and row.get('leisure'):
+                    subtype = row.get('leisure', None)
+                elif 'amenity' in row.index:
+                    subtype = row.get('amenity', None)
+            
+            # Extract opening_hours tag
+            opening_hours = row.get('opening_hours', None)
             
             pois.append({
                 'name': name if isinstance(name, str) else None,
                 'type': poi_type,
                 'subtype': subtype if isinstance(subtype, str) else None,
                 'location': f"POINT({lon} {lat})",
-                'osm_id': int(osm_id) if osm_id else None
+                'osm_id': int(osm_id) if osm_id else None,
+                'opening_hours': str(opening_hours) if opening_hours and isinstance(opening_hours, str) else None
             })
         
         return pois

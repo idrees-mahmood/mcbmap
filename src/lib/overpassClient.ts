@@ -38,7 +38,7 @@ function buildOverpassQuery(bbox: { south: number; west: number; north: number; 
     const { south, west, north, east } = bbox
     const bboxStr = `${south},${west},${north},${east}`
 
-    // Query for shops (retail) and hospitality amenities
+    // Query for shops (retail), hospitality amenities, and commercial establishments
     return `
 [out:json][timeout:30];
 (
@@ -49,6 +49,18 @@ function buildOverpassQuery(bbox: { south: number; west: number; north: number; 
   // Hospitality - restaurants, cafes, bars, pubs
   node["amenity"~"restaurant|cafe|bar|pub|fast_food|food_court|biergarten"](${bboxStr});
   way["amenity"~"restaurant|cafe|bar|pub|fast_food|food_court|biergarten"](${bboxStr});
+  
+  // Commercial - offices
+  node["office"](${bboxStr});
+  way["office"](${bboxStr});
+  
+  // Commercial - banks, post offices, clinics
+  node["amenity"~"bank|bureau_de_change|post_office|clinic|dentist"](${bboxStr});
+  way["amenity"~"bank|bureau_de_change|post_office|clinic|dentist"](${bboxStr});
+  
+  // Commercial - gyms and leisure
+  node["leisure"~"fitness_centre|gym|sports_centre"](${bboxStr});
+  way["leisure"~"fitness_centre|gym|sports_centre"](${bboxStr});
 );
 out center;
 `.trim()
@@ -60,6 +72,10 @@ out center;
 function parseOverpassResponse(elements: OverpassElement[]): Omit<BusinessNode, 'id'>[] {
     const businesses: Omit<BusinessNode, 'id'>[] = []
 
+    // Tags that indicate commercial amenities
+    const COMMERCIAL_AMENITY_TAGS = ['bank', 'bureau_de_change', 'post_office', 'clinic', 'dentist']
+    const COMMERCIAL_LEISURE_TAGS = ['fitness_centre', 'gym', 'sports_centre']
+
     for (const element of elements) {
         // Get coordinates (node has lat/lon, way has center)
         const lat = element.lat ?? element.center?.lat
@@ -70,7 +86,7 @@ function parseOverpassResponse(elements: OverpassElement[]): Omit<BusinessNode, 
         const tags = element.tags || {}
 
         // Determine type and subtype
-        let type: 'retail' | 'hospitality' | 'other' = 'other'
+        let type: 'retail' | 'hospitality' | 'commercial' | 'other' = 'other'
         let subtype: string | null = null
 
         if (tags.shop) {
@@ -79,6 +95,15 @@ function parseOverpassResponse(elements: OverpassElement[]): Omit<BusinessNode, 
         } else if (tags.amenity && HOSPITALITY_TAGS.includes(tags.amenity)) {
             type = 'hospitality'
             subtype = tags.amenity
+        } else if (tags.office) {
+            type = 'commercial'
+            subtype = tags.office
+        } else if (tags.amenity && COMMERCIAL_AMENITY_TAGS.includes(tags.amenity)) {
+            type = 'commercial'
+            subtype = tags.amenity
+        } else if (tags.leisure && COMMERCIAL_LEISURE_TAGS.includes(tags.leisure)) {
+            type = 'commercial'
+            subtype = tags.leisure
         }
 
         businesses.push({
@@ -86,7 +111,8 @@ function parseOverpassResponse(elements: OverpassElement[]): Omit<BusinessNode, 
             type,
             subtype,
             lng: lon,
-            lat
+            lat,
+            opening_hours: tags.opening_hours || null
         })
     }
 

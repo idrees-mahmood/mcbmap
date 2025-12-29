@@ -13,16 +13,18 @@ export interface BusinessCount {
     total: number
     retail: number
     hospitality: number
+    commercial: number
     other: number
 }
 
 export interface BusinessNode {
     id: string
     name: string | null
-    type: 'retail' | 'hospitality' | 'other'
+    type: 'retail' | 'hospitality' | 'commercial' | 'other'
     subtype: string | null
     lng: number
     lat: number
+    opening_hours?: string | null
 }
 
 // Cache for business nodes to avoid repeated fetches
@@ -152,6 +154,7 @@ export function countBusinessesInPolygon(
 
     let retail = 0
     let hospitality = 0
+    let commercial = 0
     let other = 0
     let checkedCount = 0
     let skippedNoCoords = 0
@@ -173,14 +176,17 @@ export function countBusinessesInPolygon(
                 case 'hospitality':
                     hospitality++
                     break
+                case 'commercial':
+                    commercial++
+                    break
                 default:
                     other++
             }
         }
     }
 
-    const total = retail + hospitality + other
-    console.log(`[BusinessCounter] Polygon check: ${checkedCount} businesses checked, ${skippedNoCoords} skipped (no coords), ${total} matched (${retail} retail, ${hospitality} hospitality, ${other} other)`)
+    const total = retail + hospitality + commercial + other
+    console.log(`[BusinessCounter] Polygon check: ${checkedCount} businesses checked, ${skippedNoCoords} skipped (no coords), ${total} matched (${retail} retail, ${hospitality} hospitality, ${commercial} commercial, ${other} other)`)
 
     // If no matches but we have businesses, log some sample coordinates for debugging
     if (total === 0 && checkedCount > 0) {
@@ -195,6 +201,7 @@ export function countBusinessesInPolygon(
         total,
         retail,
         hospitality,
+        commercial,
         other
     }
 }
@@ -206,11 +213,12 @@ export function countBusinessesInPolygon(
 export function getMatchedBusinesses(
     bufferPolygon: GeoJSON.Polygon,
     businesses: BusinessNode[]
-): { retail: BusinessNode[]; hospitality: BusinessNode[]; other: BusinessNode[] } {
+): { retail: BusinessNode[]; hospitality: BusinessNode[]; commercial: BusinessNode[]; other: BusinessNode[] } {
     const polygon = turf.polygon(bufferPolygon.coordinates)
 
     const retail: BusinessNode[] = []
     const hospitality: BusinessNode[] = []
+    const commercial: BusinessNode[] = []
     const other: BusinessNode[] = []
 
     for (const business of businesses) {
@@ -225,6 +233,9 @@ export function getMatchedBusinesses(
                     break
                 case 'hospitality':
                     hospitality.push(business)
+                    break
+                case 'commercial':
+                    commercial.push(business)
                     break
                 default:
                     other.push(business)
@@ -251,6 +262,14 @@ export function getMatchedBusinesses(
         if (hospitality.length > 10) console.log(`    ... and ${hospitality.length - 10} more`)
     }
 
+    if (commercial.length > 0) {
+        console.log(`[BusinessCounter] 🏢 Commercial (${commercial.length}):`)
+        commercial.slice(0, 10).forEach(b => {
+            console.log(`    - ${b.name || 'unnamed'} (${b.subtype || 'office'})`)
+        })
+        if (commercial.length > 10) console.log(`    ... and ${commercial.length - 10} more`)
+    }
+
     if (other.length > 0) {
         console.log(`[BusinessCounter] 📍 Other (${other.length}):`)
         other.slice(0, 5).forEach(b => {
@@ -259,7 +278,7 @@ export function getMatchedBusinesses(
         if (other.length > 5) console.log(`    ... and ${other.length - 5} more`)
     }
 
-    return { retail, hospitality, other }
+    return { retail, hospitality, commercial, other }
 }
 
 
@@ -291,7 +310,7 @@ export async function countBusinessesInBuffer(
 
     if (businesses.length === 0) {
         console.warn('[BusinessCounter] No business nodes available for counting')
-        return { total: 0, retail: 0, hospitality: 0, other: 0 }
+        return { total: 0, retail: 0, hospitality: 0, commercial: 0, other: 0 }
     }
 
     console.log(`[BusinessCounter] Starting polygon check with ${businesses.length} businesses`)
@@ -300,13 +319,14 @@ export async function countBusinessesInBuffer(
     const matched = getMatchedBusinesses(bufferPolygon, businesses)
 
     const result = {
-        total: matched.retail.length + matched.hospitality.length + matched.other.length,
+        total: matched.retail.length + matched.hospitality.length + (matched.commercial?.length || 0) + matched.other.length,
         retail: matched.retail.length,
         hospitality: matched.hospitality.length,
+        commercial: matched.commercial?.length || 0,
         other: matched.other.length
     }
 
-    console.log(`[BusinessCounter] Final count: total=${result.total}, retail=${result.retail}, hospitality=${result.hospitality}, other=${result.other}`)
+    console.log(`[BusinessCounter] Final count: total=${result.total}, retail=${result.retail}, hospitality=${result.hospitality}, commercial=${result.commercial}, other=${result.other}`)
     return result
 }
 
@@ -323,19 +343,20 @@ export async function countBusinessesViaRPC(routeId: string): Promise<BusinessCo
 
         if (error) {
             console.error('RPC count failed:', error)
-            return { total: 0, retail: 0, hospitality: 0, other: 0 }
+            return { total: 0, retail: 0, hospitality: 0, commercial: 0, other: 0 }
         }
 
-        const result = data?.[0] as { total_count?: number; retail_count?: number; hospitality_count?: number; other_count?: number } | undefined
+        const result = data?.[0] as { total_count?: number; retail_count?: number; hospitality_count?: number; commercial_count?: number; other_count?: number } | undefined
         return {
             total: result?.total_count || 0,
             retail: result?.retail_count || 0,
             hospitality: result?.hospitality_count || 0,
+            commercial: result?.commercial_count || 0,
             other: result?.other_count || 0
         }
     } catch (err) {
         console.error('Error counting businesses via RPC:', err)
-        return { total: 0, retail: 0, hospitality: 0, other: 0 }
+        return { total: 0, retail: 0, hospitality: 0, commercial: 0, other: 0 }
     }
 }
 
