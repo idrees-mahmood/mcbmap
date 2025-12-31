@@ -7,14 +7,21 @@
 import { useState, useEffect } from 'react'
 import type { ProtestWithRoute } from '../../lib/database.types'
 import { getBusinessesInBuffer, type BusinessNode } from '../../lib/businessCounter'
+import {
+    computeBusinessStatuses,
+    getStatusEmoji,
+    type BusinessWithStatus
+} from '../../lib/businessStatusHelper'
 
 interface Props {
     protest: ProtestWithRoute
+    onBusinessesLoaded?: (businesses: BusinessWithStatus[]) => void
 }
 
-export function BusinessListPanel({ protest }: Props) {
+export function BusinessListPanel({ protest, onBusinessesLoaded }: Props) {
     const [isLoading, setIsLoading] = useState(true)
     const [isExpanded, setIsExpanded] = useState(false)
+    const [businessesWithStatus, setBusinessesWithStatus] = useState<BusinessWithStatus[]>([])
     const [businesses, setBusinesses] = useState<{
         retail: BusinessNode[];
         hospitality: BusinessNode[];
@@ -43,6 +50,25 @@ export function BusinessListPanel({ protest }: Props) {
             const result = await getBusinessesInBuffer(buffer, { enableDynamicFetch: true })
             setBusinesses(result)
             console.log('[BusinessListPanel] Loaded businesses:', result)
+
+            // Compute statuses for all businesses
+            const allBusinesses = [
+                ...result.retail,
+                ...result.hospitality,
+                ...result.commercial,
+                ...result.other
+            ]
+            const withStatus = computeBusinessStatuses(
+                allBusinesses,
+                protest.event_date,
+                protest.start_time
+            )
+            setBusinessesWithStatus(withStatus)
+
+            // Notify parent component
+            if (onBusinessesLoaded) {
+                onBusinessesLoaded(withStatus)
+            }
         } catch (err) {
             console.error('[BusinessListPanel] Error loading businesses:', err)
             setError('Failed to load business data')
@@ -74,6 +100,11 @@ export function BusinessListPanel({ protest }: Props) {
     }
 
     const totalCount = businesses.total
+
+    // Create lookup map from id to status
+    const statusMap = new Map<string, BusinessWithStatus>(
+        businessesWithStatus.map(b => [b.id, b])
+    )
 
     return (
         <div className="border border-slate-700 rounded-xl overflow-hidden">
@@ -111,6 +142,7 @@ export function BusinessListPanel({ protest }: Props) {
                                     icon="🏪"
                                     title="Retail"
                                     businesses={businesses.retail}
+                                    statusMap={statusMap}
                                     bgColor="bg-blue-500/10"
                                     borderColor="border-blue-500/20"
                                 />
@@ -122,6 +154,7 @@ export function BusinessListPanel({ protest }: Props) {
                                     icon="🍽️"
                                     title="Hospitality"
                                     businesses={businesses.hospitality}
+                                    statusMap={statusMap}
                                     bgColor="bg-orange-500/10"
                                     borderColor="border-orange-500/20"
                                 />
@@ -133,6 +166,7 @@ export function BusinessListPanel({ protest }: Props) {
                                     icon="🏢"
                                     title="Commercial"
                                     businesses={businesses.commercial}
+                                    statusMap={statusMap}
                                     bgColor="bg-purple-500/10"
                                     borderColor="border-purple-500/20"
                                 />
@@ -144,6 +178,7 @@ export function BusinessListPanel({ protest }: Props) {
                                     icon="📍"
                                     title="Other"
                                     businesses={businesses.other}
+                                    statusMap={statusMap}
                                     bgColor="bg-slate-500/10"
                                     borderColor="border-slate-500/20"
                                 />
@@ -166,12 +201,14 @@ function BusinessTypeSection({
     icon,
     title,
     businesses,
+    statusMap,
     bgColor,
     borderColor
 }: {
     icon: string
     title: string
     businesses: BusinessNode[]
+    statusMap: Map<string, BusinessWithStatus>
     bgColor: string
     borderColor: string
 }) {
@@ -187,16 +224,23 @@ function BusinessTypeSection({
                 <span className="text-xs text-slate-500">({businesses.length})</span>
             </div>
             <div className="space-y-1">
-                {businesses.slice(0, displayCount).map((b, i) => (
-                    <div key={b.id || i} className="flex items-center justify-between text-xs">
-                        <span className="text-slate-300 truncate max-w-[200px]">
-                            {b.name || 'Unnamed'}
-                        </span>
-                        <span className="text-slate-500 text-[10px]">
-                            {b.subtype || title.toLowerCase()}
-                        </span>
-                    </div>
-                ))}
+                {businesses.slice(0, displayCount).map((b, i) => {
+                    const withStatus = statusMap.get(b.id)
+                    const statusEmoji = withStatus ? getStatusEmoji(withStatus.status) : '⚪'
+                    return (
+                        <div key={b.id || i} className="flex items-center justify-between text-xs gap-2">
+                            <div className="flex items-center gap-1 min-w-0 flex-1">
+                                <span title={withStatus?.statusLabel || 'Unknown'}>{statusEmoji}</span>
+                                <span className="text-slate-300 truncate">
+                                    {b.name || 'Unnamed'}
+                                </span>
+                            </div>
+                            <span className="text-slate-500 text-[10px] flex-shrink-0">
+                                {b.subtype || title.toLowerCase()}
+                            </span>
+                        </div>
+                    )
+                })}
                 {hasMore && !showAll && (
                     <button
                         onClick={() => setShowAll(true)}

@@ -13,6 +13,7 @@ interface ProtestMapProps {
     clickMode?: 'start' | 'end' | null
     startMarker?: MapPoint | null
     endMarker?: MapPoint | null
+    businessMarkers?: GeoJSON.FeatureCollection | null
 }
 
 export function ProtestMap({
@@ -22,12 +23,14 @@ export function ProtestMap({
     onMapClick,
     clickMode,
     startMarker,
-    endMarker
+    endMarker,
+    businessMarkers
 }: ProtestMapProps) {
     const mapContainer = useRef<HTMLDivElement>(null)
     const map = useRef<mapboxgl.Map | null>(null)
     const startMarkerRef = useRef<mapboxgl.Marker | null>(null)
     const endMarkerRef = useRef<mapboxgl.Marker | null>(null)
+    const popupRef = useRef<mapboxgl.Popup | null>(null)
     const [mapLoaded, setMapLoaded] = useState(false)
 
     // Refs to hold latest values for use in event handlers (fixes closure bug)
@@ -158,6 +161,74 @@ export function ProtestMap({
                 }
             })
 
+            // Add source for business markers
+            map.current!.addSource('business-markers', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            })
+
+            // Business markers layer - colored circles
+            map.current!.addLayer({
+                id: 'business-markers-layer',
+                type: 'circle',
+                source: 'business-markers',
+                paint: {
+                    // Color by business type
+                    'circle-color': ['get', 'typeColor'],
+                    // Size varies slightly
+                    'circle-radius': 6,
+                    // Opacity based on open status (open = bright, closed = dim)
+                    'circle-opacity': [
+                        'case',
+                        ['==', ['get', 'status'], 'CLOSED'],
+                        0.4,
+                        0.9
+                    ],
+                    // White stroke for visibility
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-opacity': 0.8
+                }
+            })
+
+            // Create popup for hover
+            popupRef.current = new mapboxgl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                className: 'business-popup'
+            })
+
+            // Hover handler for business markers
+            map.current!.on('mouseenter', 'business-markers-layer', (e) => {
+                if (!map.current || !e.features || e.features.length === 0) return
+
+                map.current.getCanvas().style.cursor = 'pointer'
+
+                const feature = e.features[0]
+                const coordinates = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number]
+                const { name, type, subtype, statusLabel, status } = feature.properties || {}
+
+                // Build popup HTML
+                const statusEmoji = status === 'OPEN' ? '🟢' : status === 'CLOSED' ? '🔴' : status === 'PARTIAL' ? '🟡' : '⚪'
+                const typeLabel = type?.charAt(0).toUpperCase() + type?.slice(1) || 'Business'
+
+                const html = `
+                    <div class="font-semibold text-white">${name || 'Unnamed'}</div>
+                    <div class="text-slate-300 text-xs">${typeLabel}${subtype ? ` • ${subtype}` : ''}</div>
+                    <div class="text-xs mt-1">${statusEmoji} ${statusLabel || 'Unknown'}</div>
+                `
+
+                popupRef.current!
+                    .setLngLat(coordinates)
+                    .setHTML(html)
+                    .addTo(map.current!)
+            })
+
+            map.current!.on('mouseleave', 'business-markers-layer', () => {
+                if (map.current) map.current.getCanvas().style.cursor = ''
+                if (popupRef.current) popupRef.current.remove()
+            })
+
             // Click handler for route layer
             map.current!.on('click', 'protest-route-layer', (e) => {
                 if (e.features && e.features[0]) {
@@ -234,6 +305,20 @@ export function ProtestMap({
             bufferSource.setData({ type: 'FeatureCollection', features: bufferFeatures })
         }
     }, [protests, mapLoaded])
+
+    // Update business markers on map
+    useEffect(() => {
+        if (!mapLoaded || !map.current) return
+
+        const source = map.current.getSource('business-markers') as mapboxgl.GeoJSONSource
+        if (source) {
+            if (businessMarkers) {
+                source.setData(businessMarkers)
+            } else {
+                source.setData({ type: 'FeatureCollection', features: [] })
+            }
+        }
+    }, [businessMarkers, mapLoaded])
 
     // Update selected protest styling
     useEffect(() => {

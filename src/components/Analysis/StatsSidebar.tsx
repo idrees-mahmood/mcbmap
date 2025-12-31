@@ -1,14 +1,21 @@
+import { useState } from 'react'
 import type { ProtestWithRoute } from '../../lib/database.types'
 import { formatDistance } from '../../lib/osrm'
 import { FootfallAnalysisPanel } from './FootfallAnalysisPanel'
 import { BusinessListPanel } from './BusinessListPanel'
+import {
+    calculateStatusSummary,
+    type BusinessWithStatus,
+    type BusinessStatusSummary
+} from '../../lib/businessStatusHelper'
 
 interface StatsSidebarProps {
     selectedProtest: ProtestWithRoute | null
     totalProtests: number
+    onBusinessesLoaded?: (businesses: BusinessWithStatus[]) => void
 }
 
-export function StatsSidebar({ selectedProtest, totalProtests }: StatsSidebarProps) {
+export function StatsSidebar({ selectedProtest, totalProtests, onBusinessesLoaded }: StatsSidebarProps) {
     if (!selectedProtest) {
         return (
             <div className="space-y-6">
@@ -28,6 +35,19 @@ export function StatsSidebar({ selectedProtest, totalProtests }: StatsSidebarPro
 
     const route = selectedProtest.route
     const totalAffected = (route?.affected_retail || 0) + (route?.affected_hospitality || 0)
+
+    // State for business status summary
+    const [statusSummary, setStatusSummary] = useState<BusinessStatusSummary | null>(null)
+
+    // Callback when businesses are loaded
+    const handleBusinessesLoaded = (businesses: BusinessWithStatus[]) => {
+        const summary = calculateStatusSummary(businesses)
+        setStatusSummary(summary)
+        // Pass to parent for map markers
+        if (onBusinessesLoaded) {
+            onBusinessesLoaded(businesses)
+        }
+    }
 
     // Determine impact level based on affected businesses
     const getImpactLevel = (count: number) => {
@@ -102,7 +122,53 @@ export function StatsSidebar({ selectedProtest, totalProtests }: StatsSidebarPro
                     </div>
 
                     {/* Detected Business List */}
-                    <BusinessListPanel protest={selectedProtest} />
+                    <BusinessListPanel protest={selectedProtest} onBusinessesLoaded={handleBusinessesLoaded} />
+
+                    {/* Business Opening Status Summary */}
+                    {statusSummary && statusSummary.total > 0 && (
+                        <div className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/30 rounded-xl p-4">
+                            <h4 className="text-sm font-medium text-emerald-300 mb-3 flex items-center gap-2">
+                                🕒 Opening Hours Analysis
+                            </h4>
+                            <div className="grid grid-cols-2 gap-2 mb-3">
+                                <div className="bg-slate-800/50 rounded-lg p-2 text-center">
+                                    <div className="text-xl font-bold text-emerald-400">
+                                        {statusSummary.actuallyAffected}
+                                    </div>
+                                    <div className="text-xs text-slate-400">Would Be Open</div>
+                                </div>
+                                <div className="bg-slate-800/50 rounded-lg p-2 text-center">
+                                    <div className="text-xl font-bold text-red-400">
+                                        {statusSummary.wouldBeClosed}
+                                    </div>
+                                    <div className="text-xs text-slate-400">Closed Anyway</div>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-xs">
+                                <span className="flex items-center gap-1">
+                                    <span>🟢</span>
+                                    <span className="text-slate-400">Open: {statusSummary.open}</span>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                    <span>🔴</span>
+                                    <span className="text-slate-400">Closed: {statusSummary.closed}</span>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                    <span>🟡</span>
+                                    <span className="text-slate-400">Partial: {statusSummary.partial}</span>
+                                </span>
+                                {statusSummary.unknown > 0 && (
+                                    <span className="flex items-center gap-1">
+                                        <span>⚪</span>
+                                        <span className="text-slate-400">Unknown: {statusSummary.unknown}</span>
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-2">
+                                Based on {new Date(selectedProtest.event_date).toLocaleDateString('en-GB', { weekday: 'long' })} opening hours.
+                            </p>
+                        </div>
+                    )}
 
                     {/* Impact Summary */}
                     <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl p-4">

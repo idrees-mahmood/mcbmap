@@ -7,6 +7,7 @@ import type { MapPoint, ProtestWithRoute, ProtestFormData } from './lib/database
 import { isDemoMode } from './lib/supabase'
 import { countBusinessesInBuffer } from './lib/businessCounter'
 import { loadStoredProtests, clearRouteCache, getRouteMode, setRouteMode, type RouteMode } from './lib/protestLoader'
+import { businessesToGeoJSON, type BusinessWithStatus } from './lib/businessStatusHelper'
 
 type SidebarView = 'list' | 'form' | 'stats'
 
@@ -19,6 +20,7 @@ function App() {
   const [endPoint, setEndPoint] = useState<MapPoint | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [routeMode, setRouteModeState] = useState<RouteMode>(getRouteMode())
+  const [businessMarkersGeoJSON, setBusinessMarkersGeoJSON] = useState<GeoJSON.FeatureCollection | null>(null)
 
   // Load stored protests on mount
   useEffect(() => {
@@ -149,6 +151,23 @@ function App() {
     setSidebarView('list')
   }, [])
 
+  // Handle business data from StatsSidebar
+  const handleBusinessesLoaded = useCallback((businesses: BusinessWithStatus[]) => {
+    if (businesses.length > 0) {
+      const geoJSON = businessesToGeoJSON(businesses)
+      setBusinessMarkersGeoJSON(geoJSON)
+    } else {
+      setBusinessMarkersGeoJSON(null)
+    }
+  }, [])
+
+  // Clear business markers when no protest selected
+  useEffect(() => {
+    if (!selectedProtestId) {
+      setBusinessMarkersGeoJSON(null)
+    }
+  }, [selectedProtestId])
+
   // Get selected protest
   const selectedProtest = protests.find(p => p.id === selectedProtestId) || null
 
@@ -164,6 +183,7 @@ function App() {
           clickMode={clickMode}
           startMarker={startPoint}
           endMarker={endPoint}
+          businessMarkers={businessMarkersGeoJSON}
         />
       </main>
 
@@ -225,8 +245,8 @@ function App() {
                   onClick={handleToggleRouteMode}
                   disabled={isLoading}
                   className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all disabled:opacity-50 ${routeMode === 'osrm'
-                      ? 'bg-blue-500/20 text-blue-300 border-blue-500'
-                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500'
+                    ? 'bg-blue-500/20 text-blue-300 border-blue-500'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500'
                     }`}
                   title={`Currently using ${routeMode === 'osrm' ? 'OSRM routing' : 'raw LineString'}. Click to switch.`}
                 >
@@ -267,6 +287,7 @@ function App() {
             <StatsSidebar
               selectedProtest={selectedProtest}
               totalProtests={protests.length}
+              onBusinessesLoaded={handleBusinessesLoaded}
             />
           )}
         </div>
