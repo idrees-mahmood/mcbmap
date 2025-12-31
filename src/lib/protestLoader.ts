@@ -66,8 +66,10 @@ interface CachedRoute {
     duration: number
     retail: number
     hospitality: number
+    commercial: number  // Added for commercial establishments
     cachedAt: string
     mode: RouteMode  // Track which mode was used
+    bufferSize: number  // Track buffer size for cache invalidation
 }
 
 // In-memory cache for current session (separate by mode)
@@ -190,12 +192,17 @@ async function loadSingleProtest(
     const mode = currentRouteMode
     const cacheKey = `${entry.file}:${mode}`  // Include mode in cache key
 
-    // Check cache first (must match current mode)
+    // Check cache first (must match current mode AND buffer size)
+    const EXPECTED_BUFFER_SIZE = 100  // meters
     if (!skipCache && routeCache.has(cacheKey)) {
         const cached = routeCache.get(cacheKey)!
-        if (cached.mode === mode) {
+        // Validate cache entry matches current mode and buffer size
+        if (cached.mode === mode && cached.bufferSize === EXPECTED_BUFFER_SIZE) {
             console.log(`[ProtestLoader] Using cached ${mode} route for ${entry.name}`)
             return createProtestFromCache(entry, cached)
+        } else {
+            console.log(`[ProtestLoader] Cache invalidated for ${entry.name} (buffer: ${cached.bufferSize || 50}m -> ${EXPECTED_BUFFER_SIZE}m)`)
+            routeCache.delete(cacheKey)
         }
     }
 
@@ -247,7 +254,8 @@ async function loadSingleProtest(
         console.log(`[ProtestLoader] Counting businesses for ${entry.name}...`)
         const businessCounts = await countBusinessesInBuffer(buffer)
 
-        // Cache the result
+        // Cache the result - with buffer size for invalidation when parameters change
+        const BUFFER_SIZE = 100  // meters - must match osrm.ts default
         const cachedRoute: CachedRoute = {
             geometry: routeGeometry,
             buffer: buffer,
@@ -255,14 +263,16 @@ async function loadSingleProtest(
             duration: duration,
             retail: businessCounts.retail,
             hospitality: businessCounts.hospitality,
+            commercial: businessCounts.commercial,
             cachedAt: new Date().toISOString(),
-            mode: mode
+            mode: mode,
+            bufferSize: BUFFER_SIZE
         }
 
         routeCache.set(cacheKey, cachedRoute)
         saveCacheToStorage()
 
-        console.log(`[ProtestLoader] Loaded ${entry.name} [${mode}]: ${(distance / 1000).toFixed(1)}km, ${businessCounts.retail + businessCounts.hospitality} businesses`)
+        console.log(`[ProtestLoader] Loaded ${entry.name} [${mode}]: ${(distance / 1000).toFixed(1)}km, ${businessCounts.retail + businessCounts.hospitality + businessCounts.commercial} businesses`)
 
         // Extract start/end from route
         const coords = routeGeometry.coordinates as [number, number][]
@@ -318,7 +328,8 @@ function createProtestFromCache(
             distance_meters: cached.distance,
             duration_seconds: cached.duration,
             affected_retail: cached.retail,
-            affected_hospitality: cached.hospitality
+            affected_hospitality: cached.hospitality,
+            affected_commercial: cached.commercial || 0
         },
         // Mark as stored protest
         isStored: true,

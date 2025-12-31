@@ -137,7 +137,7 @@ export interface Database {
                 Row: {
                     id: string
                     name: string | null
-                    type: 'retail' | 'hospitality' | 'other'
+                    type: 'retail' | 'hospitality' | 'commercial' | 'other'
                     subtype: string | null
                     location: unknown
                     osm_id: number | null
@@ -147,7 +147,7 @@ export interface Database {
                 Insert: {
                     id?: string
                     name?: string | null
-                    type: 'retail' | 'hospitality' | 'other'
+                    type: 'retail' | 'hospitality' | 'commercial' | 'other'
                     subtype?: string | null
                     location: unknown
                     osm_id?: number | null
@@ -156,7 +156,7 @@ export interface Database {
                 }
                 Update: {
                     name?: string | null
-                    type?: 'retail' | 'hospitality' | 'other'
+                    type?: 'retail' | 'hospitality' | 'commercial' | 'other'
                     subtype?: string | null
                     location?: unknown
                     osm_id?: number | null
@@ -229,6 +229,7 @@ export interface ProtestWithRoute extends Protest {
         duration_seconds: number
         affected_retail: number
         affected_hospitality: number
+        affected_commercial?: number  // Added for office/bank/gym counts
     }
     isStored?: boolean  // True if loaded from stored GeoJSON files
     speakers?: string[]  // List of speakers at the protest

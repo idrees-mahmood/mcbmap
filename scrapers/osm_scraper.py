@@ -192,10 +192,14 @@ def main():
     # Fetch hospitality POIs
     hospitality_pois = fetch_osm_pois(TAGS['hospitality'], 'hospitality')
     
+    # Fetch commercial POIs (offices, banks, gyms - crucial for weekend analysis)
+    commercial_pois = fetch_osm_pois(TAGS['commercial'], 'commercial')
+    
     # Combine and insert
-    all_pois = retail_pois + hospitality_pois
+    all_pois = retail_pois + hospitality_pois + commercial_pois
     print()
     print(f"Total POIs found: {len(all_pois)}")
+    print(f"  Retail: {len(retail_pois)}, Hospitality: {len(hospitality_pois)}, Commercial: {len(commercial_pois)}")
     print()
     
     if all_pois:

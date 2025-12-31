@@ -103,7 +103,7 @@ export async function calculateMultiWaypointRoute(
  */
 export function createRouteBuffer(
     route: GeoJSON.LineString,
-    bufferMeters: number = 50
+    bufferMeters: number = 100  // 100m captures more businesses while staying reasonable
 ): GeoJSON.Polygon {
     const coords = route.coordinates
 

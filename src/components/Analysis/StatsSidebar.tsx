@@ -1,5 +1,7 @@
 import type { ProtestWithRoute } from '../../lib/database.types'
 import { formatDistance } from '../../lib/osrm'
+import { FootfallAnalysisPanel } from './FootfallAnalysisPanel'
+import { BusinessListPanel } from './BusinessListPanel'
 
 interface StatsSidebarProps {
     selectedProtest: ProtestWithRoute | null
@@ -99,11 +101,14 @@ export function StatsSidebar({ selectedProtest, totalProtests }: StatsSidebarPro
                         </div>
                     </div>
 
+                    {/* Detected Business List */}
+                    <BusinessListPanel protest={selectedProtest} />
+
                     {/* Impact Summary */}
                     <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl p-4">
                         <h4 className="text-sm font-medium text-purple-300 mb-2">💡 Analysis Summary</h4>
                         <p className="text-sm text-slate-300 leading-relaxed">
-                            This protest route passes within 50 meters of <strong className="text-white">{totalAffected}</strong> commercial establishments.
+                            This protest route passes within 100 meters of <strong className="text-white">{totalAffected}</strong> commercial establishments.
                             {totalAffected < 50 && ' This represents minimal commercial impact, likely affecting transit corridors rather than primary retail areas.'}
                             {totalAffected >= 50 && totalAffected < 200 && ' The route intersects with some commercial activity but avoids major retail hubs.'}
                             {totalAffected >= 200 && ' The route passes through areas with significant commercial presence.'}
@@ -189,16 +194,23 @@ export function StatsSidebar({ selectedProtest, totalProtests }: StatsSidebarPro
 
                         <p className="text-xs text-slate-500">
                             Footfall estimates based on typical patterns for this day/time.
-                            A 30% reduction is applied within the 50m impact zone.
+                            A 30% reduction is applied within the 100m impact zone.
                         </p>
                     </div>
 
                     {/* Buffer Zone Info */}
                     <div className="text-xs text-slate-500 flex items-center gap-2">
                         <div className="w-3 h-3 bg-red-500/50 rounded"></div>
-                        <span>Impact zone = 50m buffer around route</span>
+                        <span>Impact zone = 100m buffer around route</span>
                     </div>
                 </>
+            )}
+
+            {/* TfL Footfall Analysis Section */}
+            {route && (
+                <div className="pt-4 border-t border-slate-700">
+                    <FootfallAnalysisPanel protest={selectedProtest} />
+                </div>
             )}
 
             {!route && (

@@ -60,10 +60,11 @@ export async function fetchBusinessNodes(): Promise<BusinessNode[]> {
     type RPCBusinessNode = {
         id: string
         name: string | null
-        type: 'retail' | 'hospitality' | 'other'
+        type: 'retail' | 'hospitality' | 'commercial' | 'other'
         subtype: string | null
         lng: number
         lat: number
+        opening_hours: string | null
     }
 
     try {
@@ -79,12 +80,13 @@ export async function fetchBusinessNodes(): Promise<BusinessNode[]> {
             console.error('[BusinessCounter] Run this SQL in Supabase SQL Editor:')
             console.error(`
 CREATE OR REPLACE FUNCTION get_all_business_nodes()
-RETURNS TABLE (id UUID, name TEXT, type TEXT, subtype TEXT, lng FLOAT, lat FLOAT) AS $$
+RETURNS TABLE (id UUID, name TEXT, type TEXT, subtype TEXT, lng FLOAT, lat FLOAT, opening_hours TEXT) AS $$
 BEGIN
     RETURN QUERY
     SELECT bn.id, bn.name, bn.type, bn.subtype,
            ST_X(bn.location::GEOMETRY) as lng,
-           ST_Y(bn.location::GEOMETRY) as lat
+           ST_Y(bn.location::GEOMETRY) as lat,
+           bn.opening_hours
     FROM business_nodes bn;
 END;
 $$ LANGUAGE plpgsql STABLE;
@@ -373,3 +375,49 @@ if (!isDemoMode) {
     })
 }
 
+/**
+ * Get all matched businesses in a buffer zone with full details
+ * Returns the actual business nodes, not just counts
+ */
+export async function getBusinessesInBuffer(
+    bufferPolygon: GeoJSON.Polygon,
+    options: { enableDynamicFetch?: boolean } = {}
+): Promise<{
+    retail: BusinessNode[];
+    hospitality: BusinessNode[];
+    commercial: BusinessNode[];
+    other: BusinessNode[];
+    total: number;
+}> {
+    const { enableDynamicFetch = true } = options
+    console.log('[BusinessCounter] getBusinessesInBuffer called')
+
+    // Try to ensure coverage via Overpass API if enabled
+    if (enableDynamicFetch && !isDemoMode) {
+        try {
+            const { ensureBusinessCoverage } = await import('./overpassClient')
+            await ensureBusinessCoverage(bufferPolygon)
+        } catch (err) {
+            console.warn('[BusinessCounter] Dynamic fetch not available:', err)
+        }
+    }
+
+    // Fetch all business nodes
+    const businesses = await fetchBusinessNodes()
+
+    if (businesses.length === 0) {
+        console.warn('[BusinessCounter] No business nodes available')
+        return { retail: [], hospitality: [], commercial: [], other: [], total: 0 }
+    }
+
+    // Get matched businesses
+    const matched = getMatchedBusinesses(bufferPolygon, businesses)
+
+    return {
+        retail: matched.retail,
+        hospitality: matched.hospitality,
+        commercial: matched.commercial,
+        other: matched.other,
+        total: matched.retail.length + matched.hospitality.length + matched.commercial.length + matched.other.length
+    }
+}

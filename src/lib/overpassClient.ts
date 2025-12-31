@@ -158,6 +158,7 @@ export async function fetchBusinessesFromOverpass(
 
 /**
  * Insert businesses into Supabase database
+ * Uses insert with conflict handling since we don't have a unique OSM ID column
  */
 export async function insertBusinessesToSupabase(
     businesses: Omit<BusinessNode, 'id'>[]
@@ -166,12 +167,13 @@ export async function insertBusinessesToSupabase(
 
     console.log(`[Overpass] Inserting ${businesses.length} businesses into Supabase...`)
 
-    // Convert to database format with WKT location
+    // Convert to database format with WKT location and opening_hours
     const records = businesses.map(b => ({
         name: b.name,
         type: b.type,
         subtype: b.subtype,
-        location: `POINT(${b.lng} ${b.lat})`
+        location: `POINT(${b.lng} ${b.lat})`,
+        opening_hours: b.opening_hours || null
     }))
 
     try {
@@ -182,10 +184,11 @@ export async function insertBusinessesToSupabase(
         for (let i = 0; i < records.length; i += batchSize) {
             const batch = records.slice(i, i + batchSize)
 
+            // Use simple insert - duplicates are ok since we dedupe during counting
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase as any)
                 .from('business_nodes')
-                .upsert(batch, { onConflict: 'osm_id', ignoreDuplicates: true })
+                .insert(batch)
 
             if (error) {
                 console.warn(`[Overpass] Batch insert warning: ${error.message}`)
