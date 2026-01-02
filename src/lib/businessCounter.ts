@@ -7,12 +7,13 @@
  * 
  * Features:
  * - Lazy loading: Only fetches when needed (not on app load)
- * - localStorage caching: Persists POIs across page reloads
+ * - IndexedDB caching: Persists POIs across page reloads (100MB+ capacity)
  * - Progress callback: Reports loading progress for UI
  */
 
 import * as turf from '@turf/turf'
 import { supabase, isDemoMode } from './supabase'
+import { loadFromIndexedDB, saveToIndexedDB, clearIndexedDBCache } from './indexedDBCache'
 
 export interface BusinessCount {
     total: number
@@ -39,79 +40,20 @@ export type LoadingProgressCallback = (loaded: number, total: number | null, sta
 let businessNodesCache: BusinessNode[] | null = null
 let lastFetchTime = 0
 
-// localStorage cache configuration
-const LOCALSTORAGE_KEY = 'mcbmap_business_nodes_v2'
+// Cache timing configuration
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours (data rarely changes)
 
-interface LocalStorageCache {
-    version: string
-    timestamp: number
-    nodes: BusinessNode[]
-}
-
 /**
- * Clear all business caches (in-memory and localStorage)
+ * Clear all business caches (in-memory and IndexedDB)
  */
-export function clearBusinessCache(): void {
+export async function clearBusinessCache(): Promise<void> {
     console.log('[BusinessCounter] Clearing all business caches')
     businessNodesCache = null
     lastFetchTime = 0
-    try {
-        localStorage.removeItem(LOCALSTORAGE_KEY)
-    } catch (e) {
-        console.warn('[BusinessCounter] Could not clear localStorage:', e)
-    }
+    await clearIndexedDBCache()
 }
 
-/**
- * Load cached nodes from localStorage
- */
-function loadFromLocalStorage(): BusinessNode[] | null {
-    try {
-        const cached = localStorage.getItem(LOCALSTORAGE_KEY)
-        if (!cached) return null
 
-        const data: LocalStorageCache = JSON.parse(cached)
-
-        // Check version and freshness
-        if (data.version !== 'v2') {
-            console.log('[BusinessCounter] Cache version mismatch, clearing')
-            localStorage.removeItem(LOCALSTORAGE_KEY)
-            return null
-        }
-
-        const age = Date.now() - data.timestamp
-        if (age > CACHE_TTL_MS) {
-            console.log('[BusinessCounter] Cache expired, clearing')
-            localStorage.removeItem(LOCALSTORAGE_KEY)
-            return null
-        }
-
-        console.log(`[BusinessCounter] Loaded ${data.nodes.length} nodes from localStorage (age: ${Math.round(age / 60000)}min)`)
-        return data.nodes
-
-    } catch (e) {
-        console.warn('[BusinessCounter] Error loading from localStorage:', e)
-        return null
-    }
-}
-
-/**
- * Save nodes to localStorage
- */
-function saveToLocalStorage(nodes: BusinessNode[]): void {
-    try {
-        const data: LocalStorageCache = {
-            version: 'v2',
-            timestamp: Date.now(),
-            nodes
-        }
-        localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify(data))
-        console.log(`[BusinessCounter] Saved ${nodes.length} nodes to localStorage`)
-    } catch (e) {
-        console.warn('[BusinessCounter] Could not save to localStorage:', e)
-    }
-}
 
 /**
  * Fetch all business nodes from Supabase with progress reporting
@@ -131,13 +73,13 @@ export async function fetchBusinessNodes(
         return businessNodesCache
     }
 
-    // Layer 2: localStorage cache (fast, persists across page reloads)
-    const localCached = loadFromLocalStorage()
-    if (localCached && localCached.length > 0) {
-        businessNodesCache = localCached
+    // Layer 2: IndexedDB cache (fast, persists across page reloads, 100MB+ capacity)
+    const indexedDBCached = await loadFromIndexedDB()
+    if (indexedDBCached && indexedDBCached.length > 0) {
+        businessNodesCache = indexedDBCached
         lastFetchTime = now
-        onProgress?.(localCached.length, localCached.length, 'Loaded from cache')
-        return localCached
+        onProgress?.(indexedDBCached.length, indexedDBCached.length, 'Loaded from cache')
+        return indexedDBCached
     }
 
     // Layer 3: Network fetch with pagination
@@ -188,7 +130,7 @@ export async function fetchBusinessNodes(
 
                     businessNodesCache = fallback.data || []
                     lastFetchTime = now
-                    saveToLocalStorage(businessNodesCache)
+                    saveToIndexedDB(businessNodesCache)
                     onProgress?.(businessNodesCache.length, businessNodesCache.length, 'Loaded (limited)')
                     return businessNodesCache
                 }
@@ -243,7 +185,7 @@ export async function fetchBusinessNodes(
         // Save to caches
         businessNodesCache = allNodes
         lastFetchTime = now
-        saveToLocalStorage(allNodes)
+        saveToIndexedDB(allNodes)
 
         // Final progress update
         const validCount = allNodes.filter(n => n.lng !== 0 && n.lat !== 0).length

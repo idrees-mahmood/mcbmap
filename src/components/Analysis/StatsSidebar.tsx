@@ -3,6 +3,7 @@ import type { ProtestWithRoute } from '../../lib/database.types'
 import { formatDistance } from '../../lib/osrm'
 import { FootfallAnalysisPanel } from './FootfallAnalysisPanel'
 import { BusinessListPanel } from './BusinessListPanel'
+import { AnalysisPromptPanel } from './AnalysisPromptPanel'
 import {
     calculateStatusSummary,
     type BusinessWithStatus,
@@ -36,13 +37,15 @@ export function StatsSidebar({ selectedProtest, totalProtests, onBusinessesLoade
     const route = selectedProtest.route
     const totalAffected = (route?.affected_retail || 0) + (route?.affected_hospitality || 0)
 
-    // State for business status summary
+    // State for business status summary and loaded businesses (for LLM prompt)
     const [statusSummary, setStatusSummary] = useState<BusinessStatusSummary | null>(null)
+    const [loadedBusinesses, setLoadedBusinesses] = useState<BusinessWithStatus[]>([])
 
     // Callback when businesses are loaded
     const handleBusinessesLoaded = (businesses: BusinessWithStatus[]) => {
         const summary = calculateStatusSummary(businesses)
         setStatusSummary(summary)
+        setLoadedBusinesses(businesses)  // Store for LLM prompt
         // Pass to parent for map markers
         if (onBusinessesLoaded) {
             onBusinessesLoaded(businesses)
@@ -181,6 +184,14 @@ export function StatsSidebar({ selectedProtest, totalProtests, onBusinessesLoade
                         </p>
                     </div>
 
+                    {/* LLM Analysis Prompt */}
+                    {loadedBusinesses.length > 0 && (
+                        <AnalysisPromptPanel
+                            protest={selectedProtest}
+                            businesses={loadedBusinesses}
+                        />
+                    )}
+
                     {/* Speakers Section */}
                     {selectedProtest.speakers && selectedProtest.speakers.length > 0 && (
                         <details className="group">
@@ -236,7 +247,7 @@ export function StatsSidebar({ selectedProtest, totalProtests, onBusinessesLoade
                         </details>
                     )}
 
-                    {/* Footfall Impact Section */}
+                    {/* Footfall Impact Section - COMMENTED OUT (hardcoded values)
                     <div className="space-y-3">
                         <h4 className="text-sm font-medium text-slate-300 flex items-center gap-2">
                             🔥 Footfall Impact
@@ -263,6 +274,7 @@ export function StatsSidebar({ selectedProtest, totalProtests, onBusinessesLoade
                             A 30% reduction is applied within the 100m impact zone.
                         </p>
                     </div>
+                    */}
 
                     {/* Buffer Zone Info */}
                     <div className="text-xs text-slate-500 flex items-center gap-2">
