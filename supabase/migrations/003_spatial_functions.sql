@@ -11,7 +11,8 @@ RETURNS TABLE (
     type TEXT,
     subtype TEXT,
     lng FLOAT,
-    lat FLOAT
+    lat FLOAT,
+    opening_hours TEXT
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -21,10 +22,44 @@ BEGIN
         bn.type,
         bn.subtype,
         ST_X(bn.location::GEOMETRY) as lng,
-        ST_Y(bn.location::GEOMETRY) as lat
+        ST_Y(bn.location::GEOMETRY) as lat,
+        bn.opening_hours
     FROM business_nodes bn;
 END;
 $$ LANGUAGE plpgsql STABLE;
+
+-- Function: Get business nodes with PAGINATION (to bypass 1000 row limit)
+-- This is critical for fetching all 45,000+ POIs
+CREATE OR REPLACE FUNCTION get_business_nodes_paginated(
+    batch_limit INTEGER DEFAULT 1000,
+    batch_offset INTEGER DEFAULT 0
+)
+RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    type TEXT,
+    subtype TEXT,
+    lng FLOAT,
+    lat FLOAT,
+    opening_hours TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        bn.id,
+        bn.name,
+        bn.type,
+        bn.subtype,
+        ST_X(bn.location::GEOMETRY) as lng,
+        ST_Y(bn.location::GEOMETRY) as lat,
+        bn.opening_hours
+    FROM business_nodes bn
+    ORDER BY bn.id  -- Consistent ordering for pagination
+    LIMIT batch_limit
+    OFFSET batch_offset;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
 
 -- Function: Count all businesses within a route's buffer zone
 CREATE OR REPLACE FUNCTION count_businesses_in_buffer(route_uuid UUID)

@@ -2,11 +2,12 @@
  * Business List Panel
  * ===================
  * Displays the list of detected businesses in the impact zone.
+ * Features a progress bar during loading and lazy data fetching.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { ProtestWithRoute } from '../../lib/database.types'
-import { getBusinessesInBuffer, type BusinessNode } from '../../lib/businessCounter'
+import { getBusinessesInBuffer, type BusinessNode, type LoadingProgressCallback } from '../../lib/businessCounter'
 import {
     computeBusinessStatuses,
     getStatusEmoji,
@@ -16,6 +17,12 @@ import {
 interface Props {
     protest: ProtestWithRoute
     onBusinessesLoaded?: (businesses: BusinessWithStatus[]) => void
+}
+
+interface LoadingState {
+    loaded: number
+    total: number | null
+    status: string
 }
 
 export function BusinessListPanel({ protest, onBusinessesLoaded }: Props) {
@@ -30,6 +37,16 @@ export function BusinessListPanel({ protest, onBusinessesLoaded }: Props) {
         total: number;
     } | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const [loadingState, setLoadingState] = useState<LoadingState>({
+        loaded: 0,
+        total: null,
+        status: 'Initializing...'
+    })
+
+    // Progress callback for loading updates
+    const handleProgress: LoadingProgressCallback = useCallback((loaded, total, status) => {
+        setLoadingState({ loaded, total, status })
+    }, [])
 
     useEffect(() => {
         loadBusinesses()
@@ -44,10 +61,14 @@ export function BusinessListPanel({ protest, onBusinessesLoaded }: Props) {
 
         setIsLoading(true)
         setError(null)
+        setLoadingState({ loaded: 0, total: null, status: 'Starting...' })
 
         try {
             const buffer = protest.route.buffer as GeoJSON.Polygon
-            const result = await getBusinessesInBuffer(buffer, { enableDynamicFetch: true })
+            const result = await getBusinessesInBuffer(buffer, {
+                enableDynamicFetch: false,  // Disabled to prevent 504 timeouts
+                onProgress: handleProgress
+            })
             setBusinesses(result)
             console.log('[BusinessListPanel] Loaded businesses:', result)
 
@@ -77,12 +98,40 @@ export function BusinessListPanel({ protest, onBusinessesLoaded }: Props) {
         }
     }
 
+    // Loading state with progress bar
     if (isLoading) {
+        const progressPercent = loadingState.total && loadingState.total > 0
+            ? Math.min(100, (loadingState.loaded / loadingState.total) * 100)
+            : null
+
         return (
-            <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-700 animate-pulse">
-                <div className="flex items-center gap-2">
+            <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                <div className="flex items-center gap-2 mb-3">
                     <span className="text-lg">🏪</span>
-                    <span className="text-slate-400 text-sm">Loading business data...</span>
+                    <span className="text-slate-300 text-sm font-medium">Loading Businesses</span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="h-2 bg-slate-700 rounded-full overflow-hidden mb-2">
+                    {progressPercent !== null ? (
+                        <div
+                            className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300"
+                            style={{ width: `${progressPercent}%` }}
+                        />
+                    ) : (
+                        <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 animate-pulse w-1/3" />
+                    )}
+                </div>
+
+                {/* Status text */}
+                <div className="flex justify-between items-center text-xs text-slate-400">
+                    <span>{loadingState.status}</span>
+                    {loadingState.loaded > 0 && (
+                        <span className="text-slate-500">
+                            {loadingState.loaded.toLocaleString()}
+                            {loadingState.total ? ` / ${loadingState.total.toLocaleString()}` : ''}
+                        </span>
+                    )}
                 </div>
             </div>
         )
@@ -114,7 +163,7 @@ export function BusinessListPanel({ protest, onBusinessesLoaded }: Props) {
                 className="w-full p-3 flex items-center justify-between bg-slate-800/50 hover:bg-slate-700/50 transition-colors"
             >
                 <span className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                    📋 Detected Businesses ({totalCount})
+                    📋 Detected Businesses ({totalCount.toLocaleString()})
                 </span>
                 <span className={`text-slate-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
                     ▼
@@ -176,7 +225,7 @@ export function BusinessListPanel({ protest, onBusinessesLoaded }: Props) {
                             {businesses.other.length > 0 && (
                                 <BusinessTypeSection
                                     icon="📍"
-                                    title="Other"
+                                    title="Points of Interest"
                                     businesses={businesses.other}
                                     statusMap={statusMap}
                                     bgColor="bg-slate-500/10"
@@ -188,7 +237,7 @@ export function BusinessListPanel({ protest, onBusinessesLoaded }: Props) {
 
                     {/* Debug info */}
                     <div className="text-xs text-slate-600 pt-2 border-t border-slate-700">
-                        Buffer: 100m radius around route • Data source: {totalCount > 0 ? 'Supabase + Overpass' : 'None'}
+                        Buffer: 100m radius • Data: {totalCount > 0 ? 'Supabase' : 'None'}
                     </div>
                 </div>
             )}
@@ -221,7 +270,7 @@ function BusinessTypeSection({
             <div className="flex items-center gap-2 mb-2">
                 <span>{icon}</span>
                 <span className="text-sm font-medium text-slate-300">{title}</span>
-                <span className="text-xs text-slate-500">({businesses.length})</span>
+                <span className="text-xs text-slate-500">({businesses.length.toLocaleString()})</span>
             </div>
             <div className="space-y-1">
                 {businesses.slice(0, displayCount).map((b, i) => {
@@ -246,7 +295,7 @@ function BusinessTypeSection({
                         onClick={() => setShowAll(true)}
                         className="text-xs text-blue-400 hover:text-blue-300 mt-1"
                     >
-                        + {businesses.length - 5} more...
+                        + {(businesses.length - 5).toLocaleString()} more...
                     </button>
                 )}
                 {showAll && hasMore && (

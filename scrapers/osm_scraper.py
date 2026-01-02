@@ -1,8 +1,8 @@
 """
-OSM Business Node Scraper
-=========================
-Downloads retail and hospitality points of interest from OpenStreetMap
-for Central London and inserts them into the Supabase database.
+OSM POI Scraper
+===============
+Downloads ALL points of interest from OpenStreetMap for Central London
+using a "catch-all" approach, then filters and classifies them.
 
 Usage:
     python osm_scraper.py
@@ -34,19 +34,25 @@ BBOX = {
     'west': -0.22     # Earl's Court / South Kensington
 }
 
-# OSM tags for retail, hospitality, and commercial establishments
+# Broad "Catch-All" Tags
+# Setting values to True fetches everything with that key
 TAGS = {
-    'retail': {
-        'shop': True,  # All shop types
-    },
-    'hospitality': {
-        'amenity': ['restaurant', 'cafe', 'bar', 'pub', 'fast_food', 'food_court', 'biergarten'],
-    },
-    'commercial': {
-        'amenity': ['bank', 'bureau_de_change', 'post_office', 'clinic', 'dentist'],
-        'office': True,  # All office types (crucial for weekend analysis)
-        'leisure': ['fitness_centre', 'gym', 'sports_centre'],
-    }
+    'shop': True,       # All shops
+    'amenity': True,    # All amenities (cafes, banks, but also benches)
+    'office': True,     # All offices
+    'leisure': True,    # Gyms, sports centres
+    'tourism': True,    # Hotels, museums
+    'craft': True,      # Workshops, breweries
+    'historic': True,   # Monuments, memorials, landmarks
+}
+
+# Filter out street furniture and non-business items
+BLACKLIST = {
+    'bench', 'waste_basket', 'bicycle_parking', 'telephone',
+    'post_box', 'recycling', 'drinking_water', 'toilets',
+    'vending_machine', 'atm', 'parking', 'parking_space',
+    'motorcycle_parking', 'loading_dock', 'grit_bin',
+    'hunting_stand', 'feeding_place', 'watering_place'
 }
 
 
@@ -60,77 +66,129 @@ def get_supabase_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-def fetch_osm_pois(tags: dict, poi_type: str) -> list:
-    """
-    Fetch POIs from OpenStreetMap using osmnx.
+def determine_type(row):
+    """Classify the POI based on its tags."""
+    # Check for Shop (Retail)
+    if 'shop' in row.index and isinstance(row['shop'], str):
+        return 'retail', row['shop']
     
-    Args:
-        tags: OSM tags to search for
-        poi_type: 'retail' or 'hospitality'
+    # Check for Office (Commercial)
+    if 'office' in row.index and isinstance(row['office'], str):
+        return 'commercial', row['office']
     
-    Returns:
-        List of POI dictionaries
-    """
-    print(f"Fetching {poi_type} POIs from OpenStreetMap...")
+    # Check for Amenity (Hospitality, Commercial, or Other)
+    if 'amenity' in row.index and isinstance(row['amenity'], str):
+        subtype = row['amenity']
+        if subtype in BLACKLIST:
+            return None, None  # Skip blacklisted items
+        
+        # Hospitality amenities
+        if subtype in ['restaurant', 'cafe', 'bar', 'pub', 'fast_food', 'food_court', 'biergarten', 'nightclub']:
+            return 'hospitality', subtype
+        
+        # Commercial amenities (services)
+        if subtype in ['bank', 'bureau_de_change', 'post_office', 'clinic', 'dentist', 
+                       'pharmacy', 'doctors', 'hospital', 'veterinary']:
+            return 'commercial', subtype
+        
+        # Everything else is 'other'
+        return 'other', f"amenity:{subtype}"
+    
+    # Check for Tourism (Hotels are hospitality, rest are other)
+    if 'tourism' in row.index and isinstance(row['tourism'], str):
+        subtype = row['tourism']
+        if subtype in ['hotel', 'hostel', 'guest_house', 'motel', 'apartment']:
+            return 'hospitality', subtype
+        return 'other', f"tourism:{subtype}"
+    
+    # Check for Historic (all are other)
+    if 'historic' in row.index and isinstance(row['historic'], str):
+        return 'other', f"historic:{row['historic']}"
+    
+    # Check for Leisure (gyms/sports are commercial, rest are other)
+    if 'leisure' in row.index and isinstance(row['leisure'], str):
+        subtype = row['leisure']
+        if subtype in BLACKLIST:
+            return None, None
+        if subtype in ['fitness_centre', 'gym', 'sports_centre']:
+            return 'commercial', subtype
+        return 'other', f"leisure:{subtype}"
+    
+    # Check for Craft (commercial)
+    if 'craft' in row.index and isinstance(row['craft'], str):
+        return 'commercial', f"craft:{row['craft']}"
+    
+    return 'other', 'unknown'
+
+
+def fetch_all_pois() -> list:
+    """Fetch all POIs and classify them dynamically."""
+    print(f"Fetching ALL POIs from OpenStreetMap...")
+    print(f"  Bounding box: N={BBOX['north']}, S={BBOX['south']}, E={BBOX['east']}, W={BBOX['west']}")
     
     try:
-        # Create place polygon from bounding box
+        # Fetch everything in one big query
         gdf = ox.features_from_bbox(
             bbox=(BBOX['west'], BBOX['south'], BBOX['east'], BBOX['north']),
-            tags=tags
+            tags=TAGS
         )
         
-        print(f"  Found {len(gdf)} {poi_type} nodes")
+        print(f"  Raw nodes found: {len(gdf)}")
         
         pois = []
+        skipped_blacklist = 0
+        skipped_unknown = 0
+        
         for idx, row in gdf.iterrows():
-            # Get the centroid for polygons, or point geometry
+            # 1. Determine Type
+            poi_type, subtype = determine_type(row)
+            
+            if poi_type is None:
+                skipped_blacklist += 1
+                continue  # Skip blacklisted items
+            
+            # 2. Extract Geometry
             if row.geometry.geom_type == 'Point':
                 lon, lat = row.geometry.x, row.geometry.y
             else:
                 centroid = row.geometry.centroid
                 lon, lat = centroid.x, centroid.y
             
-            # Extract OSM ID
-            osm_id = None
-            if isinstance(idx, tuple):
-                osm_id = idx[1]  # (element_type, id)
-            elif hasattr(idx, '__iter__'):
-                osm_id = idx
-            
-            # Get name and subtype
+            # 3. Extract IDs and Names
+            osm_id = idx[1] if isinstance(idx, tuple) else idx
             name = row.get('name', None)
-            subtype = None
             
-            if poi_type == 'retail' and 'shop' in row.index:
-                subtype = row.get('shop', None)
-            elif poi_type == 'hospitality' and 'amenity' in row.index:
-                subtype = row.get('amenity', None)
-            elif poi_type == 'commercial':
-                # Commercial can come from multiple tags
-                if 'office' in row.index and row.get('office'):
-                    subtype = row.get('office', None)
-                elif 'leisure' in row.index and row.get('leisure'):
-                    subtype = row.get('leisure', None)
-                elif 'amenity' in row.index:
-                    subtype = row.get('amenity', None)
-            
-            # Extract opening_hours tag
+            # 4. Extract Extra Data (Opening Hours)
             opening_hours = row.get('opening_hours', None)
             
             pois.append({
-                'name': name if isinstance(name, str) else None,
+                'name': name if isinstance(name, str) else f"Unnamed {subtype}",
                 'type': poi_type,
-                'subtype': subtype if isinstance(subtype, str) else None,
+                'subtype': subtype,
                 'location': f"POINT({lon} {lat})",
                 'osm_id': int(osm_id) if osm_id else None,
-                'opening_hours': str(opening_hours) if opening_hours and isinstance(opening_hours, str) else None
+                'opening_hours': str(opening_hours) if isinstance(opening_hours, str) else None
             })
+        
+        print(f"  Skipped (blacklisted): {skipped_blacklist}")
+        print(f"  Valid POIs: {len(pois)}")
+        
+        # Count by type
+        type_counts = {}
+        for poi in pois:
+            t = poi['type']
+            type_counts[t] = type_counts.get(t, 0) + 1
+        
+        print(f"  Breakdown by type:")
+        for t, count in sorted(type_counts.items()):
+            print(f"    - {t}: {count}")
         
         return pois
         
     except Exception as e:
-        print(f"  Error fetching {poi_type} POIs: {e}")
+        print(f"  Error fetching POIs: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 
@@ -173,7 +231,7 @@ def insert_pois_to_supabase(client: Client, pois: list):
 def main():
     """Main entry point."""
     print("=" * 60)
-    print("OSM Business Node Scraper for Protest Impact Tracker")
+    print("OSM POI Scraper for Protest Impact Tracker")
     print("=" * 60)
     print()
     print(f"Target area: Central London")
@@ -186,20 +244,11 @@ def main():
     print("Connected to Supabase")
     print()
     
-    # Fetch retail POIs
-    retail_pois = fetch_osm_pois(TAGS['retail'], 'retail')
+    # Fetch ALL POIs in one go
+    all_pois = fetch_all_pois()
     
-    # Fetch hospitality POIs
-    hospitality_pois = fetch_osm_pois(TAGS['hospitality'], 'hospitality')
-    
-    # Fetch commercial POIs (offices, banks, gyms - crucial for weekend analysis)
-    commercial_pois = fetch_osm_pois(TAGS['commercial'], 'commercial')
-    
-    # Combine and insert
-    all_pois = retail_pois + hospitality_pois + commercial_pois
     print()
-    print(f"Total POIs found: {len(all_pois)}")
-    print(f"  Retail: {len(retail_pois)}, Hospitality: {len(hospitality_pois)}, Commercial: {len(commercial_pois)}")
+    print(f"Total Cleaned POIs to insert: {len(all_pois)}")
     print()
     
     if all_pois:

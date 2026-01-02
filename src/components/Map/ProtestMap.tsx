@@ -167,7 +167,7 @@ export function ProtestMap({
                 data: { type: 'FeatureCollection', features: [] }
             })
 
-            // Business markers layer - colored circles
+            // Business markers layer - colored circles (smaller for dense areas)
             map.current!.addLayer({
                 id: 'business-markers-layer',
                 type: 'circle',
@@ -175,19 +175,19 @@ export function ProtestMap({
                 paint: {
                     // Color by business type
                     'circle-color': ['get', 'typeColor'],
-                    // Size varies slightly
-                    'circle-radius': 6,
+                    // Smaller radius for less visual clutter
+                    'circle-radius': 4,
                     // Opacity based on open status (open = bright, closed = dim)
                     'circle-opacity': [
                         'case',
                         ['==', ['get', 'status'], 'CLOSED'],
                         0.4,
-                        0.9
+                        0.85
                     ],
-                    // White stroke for visibility
-                    'circle-stroke-width': 1.5,
+                    // Thinner stroke for cleaner look
+                    'circle-stroke-width': 1,
                     'circle-stroke-color': '#ffffff',
-                    'circle-stroke-opacity': 0.8
+                    'circle-stroke-opacity': 0.7
                 }
             })
 

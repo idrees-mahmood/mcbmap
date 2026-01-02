@@ -1,8 +1,8 @@
 /**
  * Overpass API Client for Dynamic Business Fetching
  * ==================================================
- * Fetches retail and hospitality POIs from OpenStreetMap via Overpass API
- * for areas not already covered in the database.
+ * Fetches ALL POIs from OpenStreetMap via Overpass API using a "catch-all"
+ * approach, then filters with a blacklist and classifies dynamically.
  */
 
 import { supabase } from './supabase'
@@ -10,8 +10,35 @@ import type { BusinessNode } from './businessCounter'
 
 const OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
 
-// OSM amenity tags for hospitality (used in type detection)
-const HOSPITALITY_TAGS = ['restaurant', 'cafe', 'bar', 'pub', 'fast_food', 'food_court', 'biergarten']
+// Blacklist for street furniture and non-business items
+const BLACKLIST = new Set([
+    'bench', 'waste_basket', 'bicycle_parking', 'telephone',
+    'post_box', 'recycling', 'drinking_water', 'toilets',
+    'vending_machine', 'atm', 'parking', 'parking_space',
+    'parking_entrance', 'motorcycle_parking', 'loading_dock',
+    'grit_bin', 'hunting_stand', 'feeding_place', 'watering_place'
+])
+
+// Hospitality amenity types
+const HOSPITALITY_AMENITIES = new Set([
+    'restaurant', 'cafe', 'bar', 'pub', 'fast_food', 'food_court', 'biergarten', 'nightclub'
+])
+
+// Hospitality tourism types (hotels)
+const HOSPITALITY_TOURISM = new Set([
+    'hotel', 'hostel', 'guest_house', 'motel', 'apartment'
+])
+
+// Commercial amenity types (services)
+const COMMERCIAL_AMENITIES = new Set([
+    'bank', 'bureau_de_change', 'post_office', 'clinic', 'dentist',
+    'pharmacy', 'doctors', 'hospital', 'veterinary'
+])
+
+// Commercial leisure types (gyms)
+const COMMERCIAL_LEISURE = new Set([
+    'fitness_centre', 'gym', 'sports_centre'
+])
 
 interface OverpassElement {
     type: 'node' | 'way' | 'relation'
@@ -23,6 +50,12 @@ interface OverpassElement {
         name?: string
         shop?: string
         amenity?: string
+        office?: string
+        tourism?: string
+        historic?: string
+        leisure?: string
+        craft?: string
+        opening_hours?: string
         [key: string]: string | undefined
     }
 }
@@ -33,34 +66,36 @@ interface OverpassResponse {
 
 /**
  * Build Overpass QL query for a bounding box
+ * Uses "catch-all" approach to fetch EVERYTHING, then filters client-side
  */
 function buildOverpassQuery(bbox: { south: number; west: number; north: number; east: number }): string {
     const { south, west, north, east } = bbox
     const bboxStr = `${south},${west},${north},${east}`
 
-    // Query for shops (retail), hospitality amenities, and commercial establishments
+    // Catch-all query: fetches shops, amenities, offices, leisure, tourism, historic, craft
     return `
-[out:json][timeout:30];
+[out:json][timeout:60];
 (
-  // Retail - all shops
   node["shop"](${bboxStr});
   way["shop"](${bboxStr});
   
-  // Hospitality - restaurants, cafes, bars, pubs
-  node["amenity"~"restaurant|cafe|bar|pub|fast_food|food_court|biergarten"](${bboxStr});
-  way["amenity"~"restaurant|cafe|bar|pub|fast_food|food_court|biergarten"](${bboxStr});
+  node["amenity"](${bboxStr});
+  way["amenity"](${bboxStr});
   
-  // Commercial - offices
   node["office"](${bboxStr});
   way["office"](${bboxStr});
-  
-  // Commercial - banks, post offices, clinics
-  node["amenity"~"bank|bureau_de_change|post_office|clinic|dentist"](${bboxStr});
-  way["amenity"~"bank|bureau_de_change|post_office|clinic|dentist"](${bboxStr});
-  
-  // Commercial - gyms and leisure
-  node["leisure"~"fitness_centre|gym|sports_centre"](${bboxStr});
-  way["leisure"~"fitness_centre|gym|sports_centre"](${bboxStr});
+
+  node["leisure"](${bboxStr});
+  way["leisure"](${bboxStr});
+
+  node["tourism"](${bboxStr});
+  way["tourism"](${bboxStr});
+
+  node["historic"](${bboxStr});
+  way["historic"](${bboxStr});
+
+  node["craft"](${bboxStr});
+  way["craft"](${bboxStr});
 );
 out center;
 `.trim()
@@ -68,16 +103,13 @@ out center;
 
 /**
  * Parse Overpass API response into BusinessNode format
+ * Dynamically classifies POIs and filters out blacklisted items
  */
 function parseOverpassResponse(elements: OverpassElement[]): Omit<BusinessNode, 'id'>[] {
     const businesses: Omit<BusinessNode, 'id'>[] = []
 
-    // Tags that indicate commercial amenities
-    const COMMERCIAL_AMENITY_TAGS = ['bank', 'bureau_de_change', 'post_office', 'clinic', 'dentist']
-    const COMMERCIAL_LEISURE_TAGS = ['fitness_centre', 'gym', 'sports_centre']
-
     for (const element of elements) {
-        // Get coordinates (node has lat/lon, way has center)
+        // Get coordinates (node has lat/lon, way/relation has center)
         const lat = element.lat ?? element.center?.lat
         const lon = element.lon ?? element.center?.lon
 
@@ -85,29 +117,74 @@ function parseOverpassResponse(elements: OverpassElement[]): Omit<BusinessNode, 
 
         const tags = element.tags || {}
 
-        // Determine type and subtype
+        // Determine type and subtype dynamically
         let type: 'retail' | 'hospitality' | 'commercial' | 'other' = 'other'
         let subtype: string | null = null
 
+        // 1. RETAIL: shops
         if (tags.shop) {
             type = 'retail'
             subtype = tags.shop
-        } else if (tags.amenity && HOSPITALITY_TAGS.includes(tags.amenity)) {
-            type = 'hospitality'
-            subtype = tags.amenity
-        } else if (tags.office) {
+        }
+        // 2. OFFICE: commercial
+        else if (tags.office) {
             type = 'commercial'
             subtype = tags.office
-        } else if (tags.amenity && COMMERCIAL_AMENITY_TAGS.includes(tags.amenity)) {
+        }
+        // 3. CRAFT: commercial
+        else if (tags.craft) {
             type = 'commercial'
-            subtype = tags.amenity
-        } else if (tags.leisure && COMMERCIAL_LEISURE_TAGS.includes(tags.leisure)) {
-            type = 'commercial'
-            subtype = tags.leisure
+            subtype = `craft:${tags.craft}`
+        }
+        // 4. AMENITY: check for hospitality, commercial, or blacklist
+        else if (tags.amenity) {
+            // Skip blacklisted items
+            if (BLACKLIST.has(tags.amenity)) continue
+
+            if (HOSPITALITY_AMENITIES.has(tags.amenity)) {
+                type = 'hospitality'
+                subtype = tags.amenity
+            } else if (COMMERCIAL_AMENITIES.has(tags.amenity)) {
+                type = 'commercial'
+                subtype = tags.amenity
+            } else {
+                type = 'other'
+                subtype = `amenity:${tags.amenity}`
+            }
+        }
+        // 5. TOURISM: hotels are hospitality, rest are other
+        else if (tags.tourism) {
+            if (HOSPITALITY_TOURISM.has(tags.tourism)) {
+                type = 'hospitality'
+                subtype = tags.tourism
+            } else {
+                type = 'other'
+                subtype = `tourism:${tags.tourism}`
+            }
+        }
+        // 6. HISTORIC: all are other
+        else if (tags.historic) {
+            type = 'other'
+            subtype = `historic:${tags.historic}`
+        }
+        // 7. LEISURE: gyms are commercial, rest are other
+        else if (tags.leisure) {
+            if (BLACKLIST.has(tags.leisure)) continue
+
+            if (COMMERCIAL_LEISURE.has(tags.leisure)) {
+                type = 'commercial'
+                subtype = tags.leisure
+            } else {
+                type = 'other'
+                subtype = `leisure:${tags.leisure}`
+            }
         }
 
+        // Build display name
+        const displayName = tags.name || (subtype ? `Unnamed ${subtype}` : 'Unknown')
+
         businesses.push({
-            name: tags.name || null,
+            name: displayName,
             type,
             subtype,
             lng: lon,
@@ -146,7 +223,13 @@ export async function fetchBusinessesFromOverpass(
         console.log(`[Overpass] Received ${data.elements.length} elements from API`)
 
         const businesses = parseOverpassResponse(data.elements)
-        console.log(`[Overpass] Parsed ${businesses.length} businesses (${businesses.filter(b => b.type === 'retail').length} retail, ${businesses.filter(b => b.type === 'hospitality').length} hospitality)`)
+
+        // Log breakdown by type
+        const typeCounts = { retail: 0, hospitality: 0, commercial: 0, other: 0 }
+        for (const b of businesses) {
+            typeCounts[b.type]++
+        }
+        console.log(`[Overpass] Parsed ${businesses.length} businesses: ${typeCounts.retail} retail, ${typeCounts.hospitality} hospitality, ${typeCounts.commercial} commercial, ${typeCounts.other} other`)
 
         return businesses
 
@@ -231,7 +314,9 @@ export async function checkCoverage(
         }
 
         const count = data || 0
-        const hasCoverage = count > 10 // Consider covered if more than 10 businesses
+        // INCREASED THRESHOLD: Only consider covered if more than 50 businesses
+        // This helps avoid the "False Coverage Trap" for areas with partial data
+        const hasCoverage = count > 50
 
         console.log(`[Overpass] Coverage check: ${count} businesses in bbox, hasCoverage=${hasCoverage}`)
         return { hasCoverage, existingCount: count }
@@ -274,7 +359,7 @@ export async function ensureBusinessCoverage(
     const { hasCoverage, existingCount } = await checkCoverage(bbox)
 
     if (hasCoverage) {
-        console.log(`[Overpass] Area already has coverage (${existingCount} businesses), skipping fetch`)
+        console.log(`[Overpass] Area already has sufficient coverage (${existingCount} businesses), skipping fetch`)
         return
     }
 
@@ -296,4 +381,3 @@ export async function ensureBusinessCoverage(
         }
     }
 }
-
