@@ -30,6 +30,8 @@ export function ProtestForm({
     const [endTime, setEndTime] = useState('16:00')
     const [attendees, setAttendees] = useState('')
     const [notes, setNotes] = useState('')
+    const [speakers, setSpeakers] = useState('')
+    const [links, setLinks] = useState('')
     const [isCalculating, setIsCalculating] = useState(false)
     const [routePreview, setRoutePreview] = useState<{ distance: number; duration: number } | null>(null)
     const [error, setError] = useState('')
@@ -67,7 +69,18 @@ export function ProtestForm({
 
         try {
             const route = await calculateWalkingRoute(startPoint, endPoint)
-            const buffer = createRouteBuffer(route.geometry, 50)
+            // Use 100m buffer to match the analysis display
+            const buffer = createRouteBuffer(route.geometry, 100)
+
+            // Parse speakers (comma-separated)
+            const speakersList = speakers.trim()
+                ? speakers.split(',').map(s => s.trim()).filter(s => s.length > 0)
+                : undefined
+
+            // Parse links (one per line)
+            const linksList = links.trim()
+                ? links.split('\n').map(l => l.trim()).filter(l => l.length > 0 && l.startsWith('http'))
+                : undefined
 
             onSubmit(
                 {
@@ -78,7 +91,9 @@ export function ProtestForm({
                     start_point: startPoint,
                     end_point: endPoint,
                     attendees_estimate: attendees ? parseInt(attendees, 10) : undefined,
-                    notes: notes.trim() || undefined
+                    notes: notes.trim() || undefined,
+                    speakers: speakersList,
+                    links: linksList
                 },
                 {
                     geometry: route.geometry,
@@ -214,6 +229,35 @@ export function ProtestForm({
                     placeholder="e.g., 50000"
                     className="input-field"
                     min="0"
+                />
+            </div>
+
+            {/* Speakers */}
+            <div>
+                <label className="input-label">
+                    Speakers
+                    <span className="text-slate-500 font-normal ml-2">(comma-separated)</span>
+                </label>
+                <input
+                    type="text"
+                    value={speakers}
+                    onChange={(e) => setSpeakers(e.target.value)}
+                    placeholder="e.g., Jeremy Corbyn, Lowkey, Zarah Sultana"
+                    className="input-field"
+                />
+            </div>
+
+            {/* Related Links */}
+            <div>
+                <label className="input-label">
+                    Related Links
+                    <span className="text-slate-500 font-normal ml-2">(one per line)</span>
+                </label>
+                <textarea
+                    value={links}
+                    onChange={(e) => setLinks(e.target.value)}
+                    placeholder="https://example.com/article1&#10;https://example.com/article2"
+                    className="input-field min-h-[80px] resize-y"
                 />
             </div>
 

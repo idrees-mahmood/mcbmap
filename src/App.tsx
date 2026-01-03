@@ -114,6 +114,8 @@ function App() {
       attendees_estimate: data.attendees_estimate || null,
       police_data_link: null,
       notes: data.notes || null,
+      speakers: data.speakers,
+      links: data.links,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       route: {

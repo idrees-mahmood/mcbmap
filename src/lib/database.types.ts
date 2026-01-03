@@ -252,4 +252,6 @@ export interface ProtestFormData {
     end_address?: string
     attendees_estimate?: number
     notes?: string
+    speakers?: string[]
+    links?: string[]
 }
