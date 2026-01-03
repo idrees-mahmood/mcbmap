@@ -3,14 +3,17 @@
  * ==============================
  * Generates structured prompts for LLM analysis of protest impact data.
  * Designed to produce unbiased, evidence-based analysis.
+ * Includes TfL footfall analysis data for comprehensive assessment.
  */
 
 import type { ProtestWithRoute } from './database.types'
 import type { BusinessWithStatus } from './businessStatusHelper'
+import type { AnalysisResult } from './footfallAnalysis'
 
 export interface AnalysisData {
     protest: ProtestWithRoute
     businesses: BusinessWithStatus[]
+    tflResults?: AnalysisResult[]  // Optional TfL footfall analysis
     summary: {
         total: number
         open: number
@@ -24,6 +27,12 @@ export interface AnalysisData {
             other: number
         }
     }
+    tflSummary?: {
+        stationsAnalyzed: number
+        avgPercentChange: number | null
+        significantStations: number
+        verdict: string
+    }
 }
 
 /**
@@ -31,7 +40,8 @@ export interface AnalysisData {
  */
 export function generateAnalysisSummary(
     protest: ProtestWithRoute,
-    businesses: BusinessWithStatus[]
+    businesses: BusinessWithStatus[],
+    tflResults?: AnalysisResult[]
 ): AnalysisData {
     const summary = {
         total: businesses.length,
@@ -47,14 +57,38 @@ export function generateAnalysisSummary(
         }
     }
 
-    return { protest, businesses, summary }
+    // Generate TfL summary if results provided
+    let tflSummary: AnalysisData['tflSummary'] | undefined
+    if (tflResults && tflResults.length > 0) {
+        const validResults = tflResults.filter(r => r.protestDayFootfall !== null)
+        const avgPercentChange = validResults.length > 0
+            ? validResults.reduce((sum, r) => sum + (r.percentChange || 0), 0) / validResults.length
+            : null
+        const significantCount = validResults.filter(r => r.isSignificant).length
+
+        let verdict = 'ℹ️ Insufficient data for this date range'
+        if (significantCount === 0 && validResults.length > 0) {
+            verdict = '✅ No statistically significant impact on station footfall detected'
+        } else if (significantCount > 0) {
+            verdict = `⚠️ ${significantCount} station(s) showed significant variation`
+        }
+
+        tflSummary = {
+            stationsAnalyzed: tflResults.length,
+            avgPercentChange,
+            significantStations: significantCount,
+            verdict
+        }
+    }
+
+    return { protest, businesses, tflResults, summary, tflSummary }
 }
 
 /**
  * Generate an LLM prompt for unbiased analysis of protest impact
  */
 export function generateLLMPrompt(data: AnalysisData): string {
-    const { protest, summary } = data
+    const { protest, summary, tflResults, tflSummary } = data
 
     // Format date and time
     const eventDate = new Date(protest.event_date).toLocaleDateString('en-GB', {
@@ -73,6 +107,53 @@ export function generateLLMPrompt(data: AnalysisData): string {
     const percentOpenDuringProtest = summary.total > 0
         ? ((businessesThatWouldBeOpen / summary.total) * 100).toFixed(1)
         : '0'
+
+    // Build TfL section if data available
+    let tflSection = ''
+    if (tflResults && tflResults.length > 0 && tflSummary) {
+        const stationRows = tflResults.map(r => {
+            const footfall = r.protestDayFootfall !== null ? r.protestDayFootfall.toLocaleString() : 'N/A'
+            const baseline = r.baseline.count > 0 ? Math.round(r.baseline.mean).toLocaleString() : 'N/A'
+            const change = r.percentChange !== null ? `${r.percentChange > 0 ? '+' : ''}${r.percentChange.toFixed(1)}%` : 'N/A'
+            const zScore = r.zScore !== null ? `${r.zScore > 0 ? '+' : ''}${r.zScore.toFixed(2)}σ` : 'N/A'
+            const pValue = r.pValue !== null
+                ? (r.pValue < 0.001 ? 'p<0.001' : r.pValue < 0.05 ? `p<0.05` : `p=${r.pValue.toFixed(2)}`)
+                : 'N/A'
+            const significant = r.isSignificant ? '⚠️ Yes' : '✅ No'
+            return `| ${r.stationName} | ${footfall} | ${baseline} | ${change} | ${zScore} | ${pValue} | ${significant} |`
+        }).join('\n')
+
+        tflSection = `
+---
+
+### TfL Station Footfall Analysis (14-Week Comparison)
+
+This section uses **real Transport for London (TfL) data** to compare footfall on the protest day against a 14-week baseline of same-day-of-week comparisons, with weather adjustment where possible.
+
+**Summary**:
+- Stations Analyzed: ${tflSummary.stationsAnalyzed}
+- Average Change: ${tflSummary.avgPercentChange !== null ? `${tflSummary.avgPercentChange > 0 ? '+' : ''}${tflSummary.avgPercentChange.toFixed(1)}%` : 'N/A'}
+- Statistically Significant: ${tflSummary.significantStations}
+- **Verdict**: ${tflSummary.verdict}
+
+| Station | Protest Day | 14-Week Baseline | Change | Z-Score | P-Value | Significant? |
+|---------|-------------|------------------|--------|---------|---------|--------------|
+${stationRows}
+
+**Statistical Notes**:
+- Z-Score: Standard deviations from mean (|z| > 1.96 = significant at 95% CI)
+- P-Value: Probability result occurred by chance (p < 0.05 = significant)
+- Weather-adjusted where similar weather days exist in baseline
+`
+    } else {
+        tflSection = `
+---
+
+### TfL Station Footfall Analysis
+
+*TfL footfall data was not available or stations were not within range of this protest route.*
+`
+    }
 
     return `## Independent Analysis Request: Protest Commercial Impact Assessment
 
@@ -109,7 +190,7 @@ Legal experts have argued that the Met Police are "using outdated powers to poli
 | Hospitality (restaurants, hotels) | ${summary.byType.hospitality.toLocaleString()} | ${summary.total > 0 ? ((summary.byType.hospitality / summary.total) * 100).toFixed(1) : 0}% |
 | Commercial (offices, banks) | ${summary.byType.commercial.toLocaleString()} | ${summary.total > 0 ? ((summary.byType.commercial / summary.total) * 100).toFixed(1) : 0}% |
 | Other (landmarks, public buildings) | ${summary.byType.other.toLocaleString()} | ${summary.total > 0 ? ((summary.byType.other / summary.total) * 100).toFixed(1) : 0}% |
-
+${tflSection}
 ---
 
 ### Analysis Request
@@ -118,24 +199,32 @@ Please provide an **unbiased, evidence-based analysis** addressing the following
 
 1. **Commercial Impact Assessment**: Based on the data, what is the actual level of commercial disruption? Consider:
    - The percentage of businesses actually operating during the protest time
+   - TfL footfall data showing actual passenger numbers
    - Whether weekend/evening protests affect businesses differently
    - The types of businesses most/least affected
 
 2. **Proportionality Analysis**: Does the data support claims of "serious disruption to the life of the community"? Consider:
    - The route length vs. number of affected premises
-   - The typical footfall during protest hours
+   - TfL footfall changes (if significant or not significant)
+   - Whether any footfall reduction is within normal weekly variation
    - Comparable data from non-protest events (football matches, festivals, etc.)
 
-3. **Methodological Notes**: What limitations exist in this data?
+3. **Statistical Interpretation**: If TfL data is available:
+   - Are the z-scores within normal variation (±1.96σ)?
+   - Are the p-values below the significance threshold (0.05)?
+   - Could weather or other factors explain any variation?
+
+4. **Methodological Notes**: What limitations exist in this data?
    - Opening hours data may be incomplete
    - "In buffer zone" does not mean "unable to trade"
    - Pedestrian protests may increase footfall for some businesses
+   - TfL data covers stations near the route, not the entire protest area
 
-4. **Conclusion**: Based solely on the data provided, does the evidence support or challenge the premise that this protest caused "serious disruption"?
+5. **Conclusion**: Based solely on the data provided, does the evidence support or challenge the premise that this protest caused "serious disruption"?
 
 ---
 
-*Data source: OpenStreetMap POI data via Overpass API. Opening hours from OSM where available, otherwise estimated based on business type and day of week.*
+*Data sources: OpenStreetMap POI data via Overpass API; TfL station footfall data (official public dataset); Opening hours from OSM where available, otherwise estimated based on business type and day of week.*
 `
 }
 
@@ -143,7 +232,7 @@ Please provide an **unbiased, evidence-based analysis** addressing the following
  * Generate a compact JSON version for console logging
  */
 export function generateConsoleLogData(data: AnalysisData): string {
-    const { protest, summary } = data
+    const { protest, summary, tflSummary } = data
 
     return JSON.stringify({
         protest: {
@@ -154,15 +243,23 @@ export function generateConsoleLogData(data: AnalysisData): string {
                 ? (protest.route.distance_meters / 1000).toFixed(2)
                 : null
         },
-        impact: {
+        businessImpact: {
             totalPOIs: summary.total,
             wouldBeOpen: summary.open + summary.partiallyOpen,
             alreadyClosed: summary.closed,
             percentOpen: summary.total > 0
                 ? ((summary.open + summary.partiallyOpen) / summary.total * 100).toFixed(1) + '%'
-                : '0%'
+                : '0%',
+            byType: summary.byType
         },
-        byType: summary.byType
+        tflFootfall: tflSummary ? {
+            stationsAnalyzed: tflSummary.stationsAnalyzed,
+            avgPercentChange: tflSummary.avgPercentChange !== null
+                ? `${tflSummary.avgPercentChange.toFixed(1)}%`
+                : null,
+            significantStations: tflSummary.significantStations,
+            verdict: tflSummary.verdict
+        } : null
     }, null, 2)
 }
 
@@ -171,9 +268,10 @@ export function generateConsoleLogData(data: AnalysisData): string {
  */
 export function logAndGeneratePrompt(
     protest: ProtestWithRoute,
-    businesses: BusinessWithStatus[]
+    businesses: BusinessWithStatus[],
+    tflResults?: AnalysisResult[]
 ): string {
-    const data = generateAnalysisSummary(protest, businesses)
+    const data = generateAnalysisSummary(protest, businesses, tflResults)
 
     console.log('─'.repeat(60))
     console.log('📊 PROTEST IMPACT ANALYSIS DATA')

@@ -243,6 +243,7 @@ export function countBusinessesInPolygon(
 
 /**
  * Get the actual businesses matched within a buffer polygon
+ * Deduplicates by business ID to prevent duplicate markers
  */
 export function getMatchedBusinesses(
     bufferPolygon: GeoJSON.Polygon,
@@ -255,8 +256,15 @@ export function getMatchedBusinesses(
     const commercial: BusinessNode[] = []
     const other: BusinessNode[] = []
 
+    // Track seen IDs to prevent duplicates
+    const seenIds = new Set<string>()
+
     for (const business of businesses) {
         if (business.lng === 0 && business.lat === 0) continue
+
+        // Skip duplicates
+        if (seenIds.has(business.id)) continue
+        seenIds.add(business.id)
 
         const point = turf.point([business.lng, business.lat])
 
@@ -271,7 +279,7 @@ export function getMatchedBusinesses(
     }
 
     // Log summary
-    console.log('[BusinessCounter] === MATCHED BUSINESSES ===')
+    console.log('[BusinessCounter] === MATCHED BUSINESSES (deduplicated) ===')
     if (retail.length > 0) console.log(`  🛒 Retail: ${retail.length}`)
     if (hospitality.length > 0) console.log(`  🍽️ Hospitality: ${hospitality.length}`)
     if (commercial.length > 0) console.log(`  🏢 Commercial: ${commercial.length}`)
